@@ -12,3 +12,93 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+model Tenant {
+  id            String @id
+  name          String
+  email         String @unique
+  password_hash String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projects Project[]
+}
+
+model Project {
+  id          String @id
+  name        String
+  description String
+  tenant_id   String
+  tenant      Tenant @relation(fields: [tenant_id], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  apiKeys       ProjectApiKey[]
+  webhooks      WebhookEndpoint[]
+  customers     Customer[]
+  subscriptions Subscription[]
+}
+
+model ProjectApiKey {
+  key_hash   String
+  key_prefix String
+
+  project_id String
+  project    Project @relation(references: [id], fields: [project_id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([key_prefix, key_hash])
+}
+
+model WebhookEndpoint {
+  id             String  @id
+  url            String
+  signing_secret String
+  is_active      Boolean @default(true)
+  project_id     String
+  project        Project @relation(references: [id], fields: [project_id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+}
+
+model Plan {
+  id          String @id
+  name        String
+  description String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscriptions Subscription[]
+}
+
+model Customer {
+  id         String @id
+  project_id String
+
+  project Project @relation(references: [id], fields: [project_id], onDelete: Cascade)
+  email   String
+
+  subscriptions Subscription[]
+
+  @@unique([project_id, email])
+}
+
+model PaymentMethod {
+  id String @id
+}
+
+model Subscription {
+  id String @id
+
+  project_id  String
+  customer_id String
+  plan_id     String
+
+  project  Project  @relation(fields: [project_id], references: [id])
+  customer Customer @relation(fields: [customer_id], references: [id])
+  plan     Plan     @relation(fields: [plan_id], references: [id])
+}

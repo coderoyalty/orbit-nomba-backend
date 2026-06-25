@@ -13,7 +13,7 @@ datasource db {
   provider = "postgresql"
 }
 
-model Tenant {
+model Account {
   id            String @id
   name          String
   email         String @unique
@@ -26,11 +26,11 @@ model Tenant {
 }
 
 model Project {
-  id          String @id
+  id          String  @id
   name        String
   description String
-  tenant_id   String
-  tenant      Tenant @relation(fields: [tenant_id], references: [id])
+  account_id  String
+  account     Account @relation(fields: [account_id], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -39,6 +39,14 @@ model Project {
   webhooks      WebhookEndpoint[]
   customers     Customer[]
   subscriptions Subscription[]
+
+  prices Price[]
+
+  tiers Tier[]
+
+  paymentMethods PaymentMethod[]
+
+  invoices Invoice[]
 }
 
 model ProjectApiKey {
@@ -64,10 +72,38 @@ model WebhookEndpoint {
   createdAt DateTime @default(now())
 }
 
-model Plan {
-  id          String @id
+model Tier {
+  id          String @id @default(uuid())
   name        String
   description String
+
+  project_id String
+  project    Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  prices Price[]
+}
+
+enum Interval {
+  day
+  week
+  month
+  year
+}
+
+model Price {
+  id String @id @default(uuid())
+
+  tier_id    String
+  tier       Tier    @relation(fields: [tier_id], references: [id], onDelete: Cascade)
+  project_id String
+  project    Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+
+  unit_amount            Int
+  billing_interval       Interval
+  billing_interval_count Int
+  is_active              Boolean  @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -82,23 +118,117 @@ model Customer {
   project Project @relation(references: [id], fields: [project_id], onDelete: Cascade)
   email   String
 
-  subscriptions Subscription[]
+  subscriptions  Subscription[]
+  paymentMethods PaymentMethod[]
+  invoices       Invoice[]
 
   @@unique([project_id, email])
 }
 
 model PaymentMethod {
-  id String @id
+  id String @id @default(uuid())
+
+  project_id String
+  project    Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+
+  customer_id String
+  customer    Customer @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+
+  provider_token String
+  last4          String
+  brand          String
+
+  is_default Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  subscriptions Subscription[]
+}
+
+enum SubscriptionStatus {
+  trialing
+  active
+  past_due
+  canceled
+  unpaid
+  incomplete
 }
 
 model Subscription {
   id String @id
 
-  project_id  String
-  customer_id String
-  plan_id     String
+  project_id        String
+  customer_id       String
+  price_id          String
+  payment_method_id String? // Optional so the subscription can be created before card capture
 
-  project  Project  @relation(fields: [project_id], references: [id])
-  customer Customer @relation(fields: [customer_id], references: [id])
-  plan     Plan     @relation(fields: [plan_id], references: [id])
+  project       Project        @relation(fields: [project_id], references: [id])
+  customer      Customer       @relation(fields: [customer_id], references: [id])
+  price         Price          @relation(fields: [price_id], references: [id])
+  paymentMethod PaymentMethod? @relation(fields: [payment_method_id], references: [id])
+
+  status SubscriptionStatus
+
+  current_period_start DateTime
+  current_period_end   DateTime
+
+  cancel_at_period_end Boolean   @default(false)
+  canceled_at          DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invoices Invoice[]
+}
+
+enum InvoiceStatus {
+  pending
+  paid
+  failed
+  void
+}
+
+model Invoice {
+  id String @id @default(uuid())
+
+  project_id String
+  project    Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+
+  customer_id String
+  customer    Customer @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+
+  subscription_id String
+  subscription    Subscription @relation(fields: [subscription_id], references: [id], onDelete: Cascade)
+
+  amount Int
+
+  status InvoiceStatus
+
+  due_at  DateTime
+  paid_at DateTime?
+
+  createdAt DateTime @default(now())
+
+  paymentAttempts PaymentAttempt[]
+}
+
+enum PaymentAttemptStatus {
+  pending
+  successful
+  failed
+}
+
+model PaymentAttempt {
+  id String @id
+
+  invoice_id String
+  invoice    Invoice @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
+
+  provider_reference String?
+
+  status PaymentAttemptStatus
+
+  error_message String?
+
+  createdAt DateTime @default(now())
 }

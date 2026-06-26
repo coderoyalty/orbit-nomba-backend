@@ -10,15 +10,6 @@
   "monorepo": true,
   "root": "apps/core-api",
   "projects": {
-    "database": {
-      "type": "library",
-      "root": "libs/database",
-      "entryFile": "index",
-      "sourceRoot": "libs/database/src",
-      "compilerOptions": {
-        "tsConfigPath": "libs/database/tsconfig.lib.json"
-      }
-    },
     "core-api": {
       "type": "application",
       "root": "apps/core-api",
@@ -28,13 +19,22 @@
         "tsConfigPath": "apps/core-api/tsconfig.app.json"
       }
     },
-    "worker-service": {
+    "core-worker": {
       "type": "application",
-      "root": "apps/worker-service",
+      "root": "apps/core-worker",
       "entryFile": "main",
-      "sourceRoot": "apps/worker-service/src",
+      "sourceRoot": "apps/core-worker/src",
       "compilerOptions": {
-        "tsConfigPath": "apps/worker-service/tsconfig.app.json"
+        "tsConfigPath": "apps/core-worker/tsconfig.app.json"
+      }
+    },
+    "database": {
+      "type": "library",
+      "root": "libs/database",
+      "entryFile": "index",
+      "sourceRoot": "libs/database/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/database/tsconfig.lib.json"
       }
     }
   }

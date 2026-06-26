@@ -4,9 +4,10 @@
 // Get a free hosted Postgres database in seconds: `npx create-db`
 
 generator client {
-  provider     = "prisma-client"
-  output       = "../libs/database/src/generated/prisma"
-  moduleFormat = "cjs"
+  provider            = "prisma-client"
+  output              = "../libs/database/src/generated/prisma"
+  moduleFormat        = "cjs"
+  importFileExtension = "ts"
 }
 
 datasource db {
@@ -14,7 +15,7 @@ datasource db {
 }
 
 model Account {
-  id            String @id
+  id            String @id @default(cuid())
   name          String
   email         String @unique
   password_hash String
@@ -26,7 +27,7 @@ model Account {
 }
 
 model Project {
-  id          String  @id
+  id          String  @id @default(cuid())
   name        String
   description String
   account_id  String
@@ -62,7 +63,7 @@ model ProjectApiKey {
 }
 
 model WebhookEndpoint {
-  id             String  @id
+  id             String  @id @default(cuid())
   url            String
   signing_secret String
   is_active      Boolean @default(true)
@@ -73,7 +74,7 @@ model WebhookEndpoint {
 }
 
 model Tier {
-  id          String @id @default(uuid())
+  id          String @id @default(cuid())
   name        String
   description String
 
@@ -93,7 +94,7 @@ enum Interval {
 }
 
 model Price {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   tier_id    String
   tier       Tier    @relation(fields: [tier_id], references: [id], onDelete: Cascade)
@@ -112,7 +113,7 @@ model Price {
 }
 
 model Customer {
-  id         String @id
+  id         String @id @default(cuid())
   project_id String
 
   project Project @relation(references: [id], fields: [project_id], onDelete: Cascade)
@@ -126,7 +127,7 @@ model Customer {
 }
 
 model PaymentMethod {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   project_id String
   project    Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
@@ -155,7 +156,7 @@ enum SubscriptionStatus {
 }
 
 model Subscription {
-  id String @id
+  id String @id @default(cuid())
 
   project_id        String
   customer_id       String
@@ -189,7 +190,7 @@ enum InvoiceStatus {
 }
 
 model Invoice {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   project_id String
   project    Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
@@ -219,7 +220,7 @@ enum PaymentAttemptStatus {
 }
 
 model PaymentAttempt {
-  id String @id
+  id String @id @default(cuid())
 
   invoice_id String
   invoice    Invoice @relation(fields: [invoice_id], references: [id], onDelete: Cascade)

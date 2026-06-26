@@ -43,7 +43,7 @@ model Project {
 
   prices Price[]
 
-  tiers Tier[]
+  plans Plan[]
 
   paymentMethods PaymentMethod[]
 
@@ -73,7 +73,7 @@ model WebhookEndpoint {
   createdAt DateTime @default(now())
 }
 
-model Tier {
+model Plan {
   id          String @id @default(cuid())
   name        String
   description String
@@ -96,8 +96,8 @@ enum Interval {
 model Price {
   id String @id @default(cuid())
 
-  tier_id    String
-  tier       Tier    @relation(fields: [tier_id], references: [id], onDelete: Cascade)
+  plan_id    String
+  plan       Plan    @relation(fields: [plan_id], references: [id], onDelete: Cascade)
   project_id String
   project    Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
 

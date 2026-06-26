@@ -7,7 +7,7 @@ import { DashboardAuthGuard } from './guards/dashboard-auth.guard';
 @Module({
   imports: [
     JwtModule.register({
-      global: false,
+      global: true,
       signOptions: {
         expiresIn: '24hr',
       },

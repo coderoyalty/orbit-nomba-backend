@@ -64,6 +64,17 @@ export class AuthService {
     return result;
   }
 
+  async authMe(accountId: string) {
+    const data = await this.prisma.account.findFirst({
+      where: {
+        id: accountId,
+      },
+      omit: { password_hash: true },
+    });
+
+    return data;
+  }
+
   async generateToken(accountId: string, email: string) {
     const payload = { sub: accountId, email };
 

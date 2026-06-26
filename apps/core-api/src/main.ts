@@ -5,7 +5,7 @@ import { ResponseTransformInterceptor } from './lib/interceptors/resp-transform.
 import cookieParser from 'cookie-parser';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { DashboardApiModule } from './api/dashboard-api.module';
-import { PublicApiModule } from './api/public-api.module';
+import { ClientApiModule } from './api/client-api.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -46,7 +46,7 @@ async function bootstrap() {
     .build();
 
   const publicDocument = SwaggerModule.createDocument(app, publicConfig, {
-    include: [PublicApiModule],
+    include: [ClientApiModule],
     deepScanRoutes: true,
   });
   SwaggerModule.setup('docs/v1', app, publicDocument);

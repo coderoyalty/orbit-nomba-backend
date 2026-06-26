@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Post,
@@ -17,7 +18,7 @@ import { CurrentAccount } from './decorators/current-account.decorator';
 import { DashboardAuthGuard } from './guards/dashboard-auth.guard';
 
 @ApiTags('Dashboard Auth')
-@Controller('auth')
+@Controller('dashboard/auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
@@ -54,5 +55,11 @@ export class AuthController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async logout(@Res({ passthrough: true }) res: express.Response) {
     res.clearCookie('orbit_session');
+  }
+
+  @UseGuards(DashboardAuthGuard)
+  @Get('/me')
+  async authUser(@CurrentAccount('sub') accountId: string) {
+    return await this.authService.authMe(accountId);
   }
 }

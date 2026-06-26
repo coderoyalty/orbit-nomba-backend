@@ -9,7 +9,7 @@
     "build": "nest build",
     "format": "prettier --write \"apps/**/*.ts\" \"libs/**/*.ts\"",
     "start": "nest start",
-    "start:dev": "pnpm --filter \"*\" --parallel start:dev",
+    "start:dev": "nest start --watch",
     "start:dev:api": "nest start --watch core-api",
     "start:dev:worker": "nest start --watch worker-service",
     "lint": "eslint \"{apps,libs,src}/**/*.ts\" --fix",

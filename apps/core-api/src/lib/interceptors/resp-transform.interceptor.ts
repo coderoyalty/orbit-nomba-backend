@@ -4,41 +4,57 @@ import {
   Injectable,
   NestInterceptor,
 } from '@nestjs/common';
+import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
+
+type ResponseEnvelope = {
+  message?: string;
+  data?: unknown;
+  meta?: unknown;
+};
+
+function isResponseEnvelope(value: unknown): value is ResponseEnvelope {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    ('data' in value || 'message' in value || 'meta' in value)
+  );
+}
 
 @Injectable()
 export class ResponseTransformInterceptor implements NestInterceptor {
-  intercept(context: ExecutionContext, next: CallHandler) {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     return next.handle().pipe(
-      map((data) => {
-        const ctx = context.switchToHttp();
-        const res = ctx.getResponse();
+      map((body: unknown) => {
+        const response = context.switchToHttp().getResponse();
 
-        const statusCode = res.statusCode;
-
+        const statusCode = response.statusCode;
         const success = statusCode >= 200 && statusCode < 300;
 
-        const transform = (value: any) => {
-          if (!value || typeof value !== 'object') return value;
+        // HTTP 204 responses must not contain a body.
+        if (statusCode === 204) {
+          return undefined;
+        }
 
-          const ordered: Record<string, any> = {};
+        let message: string | undefined;
+        let data: unknown;
+        let meta: unknown;
 
-          const keyOrder = ['status', 'message', 'data', 'meta'];
+        if (isResponseEnvelope(body)) {
+          message = body.message;
+          data = body.data;
+          meta = body.meta;
+        } else {
+          data = body;
+        }
 
-          for (const key of keyOrder) {
-            if (key in value) ordered[key] = value[key];
-          }
-
-          for (const key of Object.keys(value)) {
-            if (!(key in ordered)) ordered[key] = value[key];
-          }
-
-          return ordered;
+        return {
+          success,
+          statusCode,
+          ...(message ? { message } : {}),
+          ...(data !== undefined && data !== null ? { data } : {}),
+          ...(meta !== undefined ? { meta } : {}),
         };
-
-        const transformedData = transform(data);
-
-        return { ...transformedData, statusCode, success };
       }),
     );
   }

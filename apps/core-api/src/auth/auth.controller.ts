@@ -5,6 +5,7 @@ import {
   HttpStatus,
   Post,
   Res,
+  UseGuards,
 } from '@nestjs/common';
 import { CreateAccountDto } from './dto/create-account.dto';
 import { AuthService } from './auth.service';
@@ -12,6 +13,8 @@ import { ApiTags } from '@nestjs/swagger';
 import { LoginAccountDto } from './dto/login-account.dto';
 import express from 'express';
 import { SESSION_NAME } from './constants';
+import { CurrentAccount } from './decorators/current-account.decorator';
+import { DashboardAuthGuard } from './guards/dashboard-auth.guard';
 
 @ApiTags('Dashboard Auth')
 @Controller('auth')
@@ -46,6 +49,7 @@ export class AuthController {
     return { message: 'Authentication successful.', status: 200 };
   }
 
+  @UseGuards(DashboardAuthGuard)
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   async logout(@Res({ passthrough: true }) res: express.Response) {

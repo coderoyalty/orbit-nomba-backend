@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtModule } from '@nestjs/jwt';
-import { DashboardAuthGuard } from './guards/dashboard-auth.guard';
+import { DashboardAuthGuard } from '../shared/guards/dashboard-auth.guard';
 
 @Module({
   imports: [

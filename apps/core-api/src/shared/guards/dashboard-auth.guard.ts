@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import express from 'express';
-import { JWT_SECRET_NAME, SESSION_NAME } from '../constants';
+import { JWT_SECRET_NAME, SESSION_NAME } from '../../auth/constants';
 import { ConfigService } from '@nestjs/config';
 
 export interface AuthRequest extends express.Request {

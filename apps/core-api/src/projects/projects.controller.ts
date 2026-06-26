@@ -10,9 +10,9 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ProjectsService } from './projects.service';
-import { CurrentAccount } from '../auth/decorators/current-account.decorator';
+import { CurrentAccount } from '../shared/decorators/current-account.decorator';
 import { CreateProjectDto } from './dto/create-project.dto';
-import { DashboardAuthGuard } from '../auth/guards/dashboard-auth.guard';
+import { DashboardAuthGuard } from '../shared/guards/dashboard-auth.guard';
 
 @UseGuards(DashboardAuthGuard)
 @Controller('dashboard/projects')

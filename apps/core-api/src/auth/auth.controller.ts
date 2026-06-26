@@ -14,8 +14,8 @@ import { ApiTags } from '@nestjs/swagger';
 import { LoginAccountDto } from './dto/login-account.dto';
 import express from 'express';
 import { SESSION_NAME } from './constants';
-import { CurrentAccount } from './decorators/current-account.decorator';
-import { DashboardAuthGuard } from './guards/dashboard-auth.guard';
+import { CurrentAccount } from '../shared/decorators/current-account.decorator';
+import { DashboardAuthGuard } from '../shared/guards/dashboard-auth.guard';
 
 @ApiTags('Dashboard Auth')
 @Controller('dashboard/auth')

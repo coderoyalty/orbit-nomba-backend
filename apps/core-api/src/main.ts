@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
-import { ResponseTransformInterceptor } from './lib/interceptors/resp-transform.interceptor';
+import { ResponseTransformInterceptor } from './shared/interceptors/resp-transform.interceptor';
 import cookieParser from 'cookie-parser';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { DashboardApiModule } from './api/dashboard-api.module';

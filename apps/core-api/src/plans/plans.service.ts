@@ -122,6 +122,24 @@ export class PlansService {
     return newPrice;
   }
 
+  async archivePrice(
+    params: { planId: string; priceId: string },
+    project: Project,
+  ) {
+    const result = await this.prisma.price.update({
+      where: {
+        id: params.priceId,
+        plan_id: params.planId,
+        project_id: project.id,
+      },
+      data: {
+        is_active: false,
+      },
+    });
+
+    return { message: 'Price successfully archived' };
+  }
+
   /**
    * Grandfathering for plans.
    *

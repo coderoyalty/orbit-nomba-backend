@@ -7,6 +7,7 @@ import {
   Param,
   Delete,
   UseGuards,
+  NotFoundException,
 } from '@nestjs/common';
 import { PlansService } from './plans.service';
 import { CreatePlanDto, PriceDto } from './dto/create-plan.dto';
@@ -58,6 +59,19 @@ export class PlansController {
     @CurrentProject() project: Project,
   ) {
     return this.plansService.addPrice(id, dto, project);
+  }
+
+  @Delete(':planId/prices/:priceId/archive')
+  archivePrice(
+    @Param('planId') planId: string,
+    @Param('priceId') priceId: string,
+    @CurrentProject() project: Project,
+  ) {
+    try {
+      return this.plansService.archivePrice({ planId, priceId }, project);
+    } catch (err) {
+      throw new NotFoundException('Price not found');
+    }
   }
 
   @Post(':planId/prices/:priceId/change-price')

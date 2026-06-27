@@ -78,6 +78,8 @@ model Plan {
   name        String
   description String
 
+  is_active Boolean @default(true)
+
   project_id String
   project    Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
 

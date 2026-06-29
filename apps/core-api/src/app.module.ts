@@ -8,6 +8,8 @@ import { DashboardApiModule } from './api/dashboard-api.module';
 import { RouterModule } from '@nestjs/core';
 import { ProjectsModule } from './projects/projects.module';
 import { PlansModule } from './plans/plans.module';
+import { HttpModule } from '@nestjs/axios';
+import { NombaModule } from '@orbit/nomba';
 
 @Module({
   imports: [
@@ -17,6 +19,7 @@ import { PlansModule } from './plans/plans.module';
     DashboardApiModule,
     ProjectsModule,
     PlansModule,
+    NombaModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -36,6 +36,15 @@
       "compilerOptions": {
         "tsConfigPath": "libs/database/tsconfig.lib.json"
       }
+    },
+    "nomba": {
+      "type": "library",
+      "root": "libs/nomba",
+      "entryFile": "index",
+      "sourceRoot": "libs/nomba/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/nomba/tsconfig.lib.json"
+      }
     }
   }
 }

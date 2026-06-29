@@ -20,14 +20,22 @@
     "noImplicitAny": true,
     "strictBindCallApply": true,
     "noFallthroughCasesInSwitch": true,
-
     "rootDir": ".",
     "outDir": "./dist",
     "baseUrl": ".",
-
     "paths": {
-      "@app/database": ["libs/database/src"],
-      "@app/database/*": ["libs/database/src/*"]
+      "@app/database": [
+        "libs/database/src"
+      ],
+      "@app/database/*": [
+        "libs/database/src/*"
+      ],
+      "@orbit/nomba": [
+        "libs/nomba/src"
+      ],
+      "@orbit/nomba/*": [
+        "libs/nomba/src/*"
+      ]
     }
   }
 }

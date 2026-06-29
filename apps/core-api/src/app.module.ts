@@ -10,6 +10,7 @@ import { ProjectsModule } from './projects/projects.module';
 import { PlansModule } from './plans/plans.module';
 import { HttpModule } from '@nestjs/axios';
 import { NombaModule } from '@orbit/nomba';
+import { WebhookModule } from './webhook/webhook.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { NombaModule } from '@orbit/nomba';
     ProjectsModule,
     PlansModule,
     NombaModule,
+    WebhookModule,
   ],
   controllers: [AppController],
   providers: [AppService],

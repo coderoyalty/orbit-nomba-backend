@@ -24,6 +24,7 @@ export class NombaAuthService {
   private logger = new Logger();
 
   public readonly accountId: string = '';
+  public readonly subAccountId: string = '';
   private liveToken: CachedToken | null = null;
   private testToken: CachedToken | null = null;
   private readonly url: string = '';
@@ -34,6 +35,7 @@ export class NombaAuthService {
     private configService: ConfigService,
   ) {
     this.accountId = configService.getOrThrow('NOMBA_ACCOUNT_ID');
+    this.subAccountId = configService.getOrThrow('NOMBA_SUB_ACCOUNT_ID');
     this.url = configService.getOrThrow('NOMBA_URL');
     this.sandboxUrl = configService.getOrThrow('NOMBA_SANDBOX_URL');
   }
@@ -49,7 +51,11 @@ export class NombaAuthService {
     const bufferWindow = 1000 * 60 * 5; // 5mins
 
     if (cached && cached.expiresAt > now + bufferWindow) {
-      return { token: cached.accessToken, accountId: this.accountId };
+      return {
+        token: cached.accessToken,
+        accountId: this.accountId,
+        subAccountId: this.subAccountId,
+      };
     }
 
     await this.exchangeCredentials(env);
@@ -59,6 +65,7 @@ export class NombaAuthService {
     return {
       token: token!.accessToken,
       accountId: this.accountId,
+      subAccountId: this.subAccountId,
     };
   }
 

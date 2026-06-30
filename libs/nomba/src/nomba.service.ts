@@ -2,13 +2,14 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { NombaAuthService } from './nomba-auth.service';
 import { EnvironmentType } from './types';
 import { HttpService } from '@nestjs/axios';
-import { firstValueFrom } from 'rxjs';
+import { catchError, firstValueFrom } from 'rxjs';
 import { AxiosError } from 'axios';
 
 interface AccountLookupResponse {
@@ -21,8 +22,17 @@ interface AccountLookupPayload {
   accountNumber: string;
 }
 
+export interface CheckoutPayload {
+  transaction_reference: string; // The incomplete Prisma Subscription ID
+  amount: number; // Ensure this is in the lowest denomination (e.g., Kobo)
+  customer_email: string;
+  redirect_url: string;
+}
+
 @Injectable()
 export class NombaService {
+  private logger = new Logger();
+
   constructor(
     private readonly nombaAuth: NombaAuthService,
     private http: HttpService,
@@ -67,6 +77,51 @@ export class NombaService {
         'Unable to complete account lookup.',
       );
     }
+  }
+
+  async generateCheckoutLink(payload: CheckoutPayload, env: EnvironmentType) {
+    const config = await this.requestConfig(env, '/checkout/order');
+
+    const orderPayload = {
+      order: {
+        orderReference: payload.transaction_reference,
+        customerEmail: payload.customer_email,
+        amount: payload.amount.toString(),
+        currency: 'NGN',
+        callbackUrl: payload.redirect_url,
+        allowedPaymentMethods: ['Card'],
+      },
+      tokenizeCard: 'true',
+    };
+
+    try {
+      const res = await firstValueFrom(
+        this.http.post(config.url, orderPayload, {
+          headers: { ...config.header },
+        }),
+      );
+      return res;
+    } catch (error) {
+      console.log((error as AxiosError).message);
+      throw error;
+    }
+  }
+
+  async listTokenizeCards(env: EnvironmentType) {
+    const config = await this.requestConfig(
+      env,
+      '/checkout/tokenized-card-data',
+    );
+
+    const { data } = await firstValueFrom(
+      this.http.get(config.url, {
+        headers: {
+          ...config.header,
+        },
+      }),
+    );
+
+    return data;
   }
 
   private async requestConfig(env: EnvironmentType, endpoint: string = '') {

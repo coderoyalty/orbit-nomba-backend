@@ -6,9 +6,9 @@ const clientApiProjectFactory = (
   context: ExecutionContext,
 ) => {
   const request = context.switchToHttp().getRequest<ApiKeyRequest>();
-  const projectId = request.projectId;
+  const project = request.project;
 
-  return projectId;
+  return project;
 };
 
 export const ClientApiProject = createParamDecorator(clientApiProjectFactory);

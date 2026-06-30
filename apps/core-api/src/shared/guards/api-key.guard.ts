@@ -1,4 +1,4 @@
-import { PrismaService } from '@app/database';
+import { PrismaService, Project } from '@app/database';
 import {
   CanActivate,
   ExecutionContext,
@@ -9,7 +9,7 @@ import express from 'express';
 import crypto from 'node:crypto';
 
 export interface ApiKeyRequest extends express.Request {
-  projectId: string;
+  project: Project;
 }
 
 @Injectable()
@@ -41,14 +41,16 @@ export class ApiKeyGuard implements CanActivate {
           key_prefix: prefix,
         },
       },
+      include: {
+        project: true,
+      },
     });
 
     if (!apiKey) {
       throw new UnauthorizedException('Invalid API key.');
     }
 
-    request.projectId = apiKey.project_id;
-
+    request.project = apiKey.project;
     return true;
   }
 }

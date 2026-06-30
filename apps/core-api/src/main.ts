@@ -10,7 +10,6 @@ import { ClientApiModule } from './api/client-api.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.enableCors({ origin: process.env.DASHBOARD_URL, credentials: true });
-
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -42,8 +41,13 @@ async function bootstrap() {
     .setDescription('Public REST API for downstream application integration.')
     .setVersion('1.0')
     .addApiKey(
-      { type: 'apiKey', name: 'Authorization', in: 'header' },
-      'ProjectApiKey',
+      {
+        type: 'apiKey',
+        in: 'header',
+        name: 'Authorization',
+        description: 'Enter: Bearer <your_access_token>',
+      },
+      'Authorization',
     )
     .build();
 
@@ -51,6 +55,13 @@ async function bootstrap() {
     include: [ClientApiModule],
     deepScanRoutes: true,
   });
+
+  publicDocument.security = [
+    {
+      Authorization: [],
+    },
+  ];
+
   SwaggerModule.setup('docs/v1', app, publicDocument);
 
   await app.listen(process.env.PORT ?? 3000);

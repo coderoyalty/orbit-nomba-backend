@@ -119,7 +119,11 @@ model Customer {
   project_id String
 
   project Project @relation(references: [id], fields: [project_id], onDelete: Cascade)
-  email   String
+
+  email     String
+  name      String
+  metadata  Json    @default("{}")
+  is_active Boolean @default(true)
 
   subscriptions  Subscription[]
   paymentMethods PaymentMethod[]

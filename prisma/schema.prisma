@@ -128,6 +128,10 @@ model Customer {
 
   environment Environment
 
+  name      String
+  metadata  Json    @default("{}")
+  is_active Boolean @default(true)
+
   subscriptions  Subscription[]
   paymentMethods PaymentMethod[]
   invoices       Invoice[]

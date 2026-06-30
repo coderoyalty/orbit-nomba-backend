@@ -2,11 +2,13 @@ import {
   Global,
   Injectable,
   InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { config } from 'dotenv';
+import { EnvironmentType } from './types';
 
 interface CachedToken {
   accessToken: string;
@@ -14,17 +16,18 @@ interface CachedToken {
 }
 
 interface TokenIssueResponse {
-  access_token: string;
-  businessId: string;
-  expiresAt: string;
+  data: { access_token: string; businessId: string; expiresAt: string };
 }
 
 @Injectable()
 export class NombaAuthService {
-  private accountId: string = '';
+  private logger = new Logger();
+
+  public readonly accountId: string = '';
   private liveToken: CachedToken | null = null;
   private testToken: CachedToken | null = null;
-  private url: string = '';
+  private readonly url: string = '';
+  private readonly sandboxUrl: string = '';
 
   constructor(
     private httpService: HttpService,
@@ -32,22 +35,31 @@ export class NombaAuthService {
   ) {
     this.accountId = configService.getOrThrow('NOMBA_ACCOUNT_ID');
     this.url = configService.getOrThrow('NOMBA_URL');
+    this.sandboxUrl = configService.getOrThrow('NOMBA_SANDBOX_URL');
   }
 
   /**
    * Retrieves a valid token and account ID for the requested environment.
    */
-  async getAuthContext(env: 'live' | 'test') {
+
+  async getAuthContext(env: EnvironmentType) {
     const cached = env === 'live' ? this.liveToken : this.testToken;
 
     const now = Date.now();
     const bufferWindow = 1000 * 60 * 5; // 5mins
 
     if (cached && cached.expiresAt > now + bufferWindow) {
-      return { token: cached.accessToken };
+      return { token: cached.accessToken, accountId: this.accountId };
     }
 
-    const data = await this.exchangeCredentials(env);
+    await this.exchangeCredentials(env);
+
+    const token = env === 'live' ? this.liveToken : this.testToken;
+
+    return {
+      token: token!.accessToken,
+      accountId: this.accountId,
+    };
   }
 
   /**
@@ -66,34 +78,41 @@ export class NombaAuthService {
         : this.configService.getOrThrow('NOMBA_TEST_PRIVATE_KEY');
 
     const data = { grant_type: 'client_credentials', clientId, clientSecret };
+    const url = this.getUrl(env);
+
+    const endpoint = `${url}/auth/token/issue`;
 
     try {
       const { data: res } = await firstValueFrom(
-        this.httpService.post<TokenIssueResponse>(
-          `${this.url}/auth/token/issue`,
-          data,
-          {
-            headers: {
-              accountId: this.accountId,
-            },
+        this.httpService.post<TokenIssueResponse>(endpoint, data, {
+          headers: {
+            accountId: this.accountId,
           },
-        ),
+        }),
       );
 
-      const expiresAt = new Date(res.expiresAt).getTime();
+      const expiresAt = new Date(res.data.expiresAt).getTime();
 
       if (env === 'live') {
         this.liveToken = {
-          accessToken: res.access_token,
+          accessToken: res.data.access_token,
           expiresAt,
         };
       } else {
-        this.testToken = { accessToken: res.access_token, expiresAt };
+        this.testToken = { accessToken: res.data.access_token, expiresAt };
       }
-    } catch (err) {
-      throw new InternalServerErrorException(
-        `Failed to authenticate with Nomba API (${env === 'live' ? 'Live' : 'Test'})`,
-      );
+    } catch (error) {
+      this.logger.error(`Failed to authenticate with Nomba API (${env}).`);
+
+      throw error;
+    }
+  }
+
+  getUrl(env: EnvironmentType) {
+    if (env === 'live') {
+      return this.url;
+    } else {
+      return this.sandboxUrl;
     }
   }
 }

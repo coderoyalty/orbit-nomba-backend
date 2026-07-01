@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
-import { PublicPlansModule } from '../v1/plans/plans.module';
-import { PublicCustomersModule } from '../v1/customers/customers.module';
+import { ApiPlansModule } from '../v1/plans/plans.module';
+import { ApiCustomersModule } from '../v1/customers/customers.module';
+import { SubscriptionsModule as ApiSubscriptionsModule } from '../v1/subscriptions/subscriptions.module';
 
-@Module({ imports: [PublicPlansModule, PublicCustomersModule] })
+@Module({
+  imports: [ApiPlansModule, ApiCustomersModule, ApiSubscriptionsModule],
+})
 export class ClientApiModule {}

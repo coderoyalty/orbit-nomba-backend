@@ -90,6 +90,7 @@ export class NombaService {
         currency: 'NGN',
         callbackUrl: payload.redirect_url,
         allowedPaymentMethods: ['Card'],
+        accountId: this.nombaAuth.subAccountId,
       },
       tokenizeCard: 'true',
     };

@@ -1,6 +1,11 @@
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 import { ApiKeyRequest } from '../guards/api-key.guard';
 
+export interface ProjectContext {
+  project: ApiKeyRequest['project'];
+  environment: ApiKeyRequest['environment'];
+}
+
 const clientApiProjectFactory = (
   data: undefined,
   context: ExecutionContext,
@@ -11,4 +16,4 @@ const clientApiProjectFactory = (
   return project;
 };
 
-export const ClientApiProject = createParamDecorator(clientApiProjectFactory);
+export const ApiProjectContext = createParamDecorator(clientApiProjectFactory);

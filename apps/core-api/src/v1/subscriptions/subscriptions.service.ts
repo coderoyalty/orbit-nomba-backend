@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { NombaService } from '@orbit/nomba';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
+import { ProjectContext } from '../../shared/decorators/client-project.decorator';
 
 const CARD_AUTHORIZATION_AMOUNT = 100_00; // #100 in kobo
 
@@ -16,7 +17,10 @@ export class SubScriptionService {
     private nombaService: NombaService,
   ) {}
 
-  async subscribeToPlan(project: Project, dto: CreateSubscriptionDto) {
+  async subscribeToPlan(
+    { project, environment }: ProjectContext,
+    dto: CreateSubscriptionDto,
+  ) {
     const price = await this.prisma.price.findFirst({
       where: {
         project_id: project.id,
@@ -72,9 +76,10 @@ export class SubScriptionService {
       async (tx) => {
         const customer = await tx.customer.upsert({
           where: {
-            project_id_email: {
+            project_id_email_environment: {
               project_id: project.id,
               email: dto.customer.email,
+              environment,
             },
           },
           create: {
@@ -84,6 +89,7 @@ export class SubScriptionService {
             ...(dto.customer.meta && {
               meta: dto.customer.meta,
             }),
+            environment: 'test',
           },
           update: {},
         });
@@ -94,6 +100,7 @@ export class SubScriptionService {
             price_id: price.id,
             customer_id: customer.id,
             status: 'incomplete',
+            environment: 'test',
           },
         });
 

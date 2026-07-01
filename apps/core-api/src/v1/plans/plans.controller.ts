@@ -1,7 +1,9 @@
 import { Controller, Get, Param, UseGuards } from '@nestjs/common';
 import { PlansService } from './plans.service';
-import { ClientApiProject } from '../../shared/decorators/client-project.decorator';
-import * as database from '@app/database';
+import {
+  ApiProjectContext,
+  type ProjectContext,
+} from '../../shared/decorators/client-project.decorator';
 import { ApiKeyGuard } from '../../shared/guards/api-key.guard';
 
 @UseGuards(ApiKeyGuard)
@@ -10,15 +12,12 @@ export class PlansController {
   constructor(private service: PlansService) {}
 
   @Get()
-  findAll(@ClientApiProject() project: database.Project) {
-    return this.service.findAll(project);
+  findAll(@ApiProjectContext() ctx: ProjectContext) {
+    return this.service.findAll(ctx.project);
   }
 
   @Get('/:id')
-  findOne(
-    @ClientApiProject() project: database.Project,
-    @Param('id') id: string,
-  ) {
-    return this.service.findOne(project, id);
+  findOne(@ApiProjectContext() ctx: ProjectContext, @Param('id') id: string) {
+    return this.service.findOne(ctx.project, id);
   }
 }

@@ -1,8 +1,10 @@
 import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { ApiKeyGuard } from '../../shared/guards/api-key.guard';
 import { SubScriptionService } from './subscriptions.service';
-import { ClientApiProject } from '../../shared/decorators/client-project.decorator';
-import * as database from '@app/database';
+import {
+  ApiProjectContext,
+  type ProjectContext,
+} from '../../shared/decorators/client-project.decorator';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
 
 @UseGuards(ApiKeyGuard)
@@ -12,9 +14,9 @@ export class SubscriptionsController {
 
   @Post()
   async subscribeCustomer(
-    @ClientApiProject() project: database.Project,
+    @ApiProjectContext() ctx: ProjectContext,
     @Body() dto: CreateSubscriptionDto,
   ) {
-    return this.service.subscribeToPlan(project, dto);
+    return this.service.subscribeToPlan(ctx, dto);
   }
 }

@@ -7,6 +7,8 @@ import {
 import { NombaService } from '@orbit/nomba';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
 
+const CARD_AUTHORIZATION_AMOUNT = 100_00; // #100 in kobo
+
 @Injectable()
 export class SubScriptionService {
   constructor(
@@ -15,13 +17,6 @@ export class SubScriptionService {
   ) {}
 
   async subscribeToPlan(project: Project, dto: CreateSubscriptionDto) {
-    /**
-     * 1. verify plan price availability
-     * 2. reject duplication of active subscriptions
-     * 3. create customer if not found
-     * 4. create incomplete subscription, and generate checkout link.
-     */
-
     const price = await this.prisma.price.findFirst({
       where: {
         project_id: project.id,
@@ -31,6 +26,7 @@ export class SubScriptionService {
           is_active: true,
         },
       },
+      include: { plan: true },
     });
 
     if (!price) {
@@ -72,83 +68,55 @@ export class SubScriptionService {
           : 'A subscription already exists for the provided customer.',
       );
     }
+    const { subscription, customer } = await this.prisma.$transaction(
+      async (tx) => {
+        const customer = await tx.customer.upsert({
+          where: {
+            project_id_email: {
+              project_id: project.id,
+              email: dto.customer.email,
+            },
+          },
+          create: {
+            email: dto.customer.email,
+            name: dto.customer.name,
+            project_id: project.id,
+            ...(dto.customer.meta && {
+              meta: dto.customer.meta,
+            }),
+          },
+          update: {},
+        });
 
-    const customer = await this.prisma.customer.upsert({
-      where: {
-        project_id_email: {
-          project_id: project.id,
-          email: dto.customer.email,
-        },
+        const subscription = await tx.subscription.create({
+          data: {
+            project_id: project.id,
+            price_id: price.id,
+            customer_id: customer.id,
+            status: 'incomplete',
+          },
+        });
+
+        return { subscription, customer };
       },
-      create: {
-        email: dto.customer.email,
-        name: dto.customer.name,
-        project_id: project.id,
-        ...(dto.customer.meta && {
-          meta: dto.customer.meta,
-        }),
-      },
-      update: {},
-    });
-
-    const startDate = dto.startDate || new Date();
-
-    const endDate = this.calculatePeriodEnd(
-      startDate,
-      price.billing_interval,
-      price.billing_interval_count,
     );
-
-    const subscription = await this.prisma.subscription.create({
-      data: {
-        project_id: project.id,
-        price_id: price.id,
-        customer_id: customer.id,
-        current_period_start: startDate,
-        current_period_end: endDate,
-        status: 'incomplete',
-      },
-    });
 
     //TODO: set project environment
     const env = 'test';
 
+    const priceAmount =
+      (price.plan.trial_days > 0
+        ? CARD_AUTHORIZATION_AMOUNT
+        : price.unit_amount) / 100;
+
     return await this.nombaService.generateCheckoutLink(
       {
-        amount: price.unit_amount / 100,
+        amount: priceAmount,
         transaction_reference: subscription.id,
         customer_email: customer.email,
         redirect_url: dto.redirectUrl,
       },
       env,
     );
-  }
-
-  private calculatePeriodEnd(
-    start: Date,
-    interval: Interval,
-    count: number,
-  ): Date {
-    const end = new Date(start);
-
-    switch (interval) {
-      case 'day':
-        end.setDate(end.getDate() + count);
-        break;
-
-      case 'week':
-        end.setDate(end.getDate() + count * 7);
-        break;
-
-      case 'month':
-        end.setMonth(end.getMonth() + count);
-        break;
-
-      case 'year':
-        end.setFullYear(end.getFullYear() + count);
-        break;
-    }
-
-    return end;
   }
 }

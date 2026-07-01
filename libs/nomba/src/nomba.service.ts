@@ -79,7 +79,11 @@ export class NombaService {
     }
   }
 
-  async generateCheckoutLink(payload: CheckoutPayload, env: EnvironmentType) {
+  async generateCheckoutLink(
+    payload: CheckoutPayload,
+    env: EnvironmentType,
+    meta?: Record<string, string>,
+  ) {
     const config = await this.requestConfig(env, '/checkout/order');
 
     const orderPayload = {
@@ -93,6 +97,7 @@ export class NombaService {
         accountId: this.nombaAuth.subAccountId,
       },
       tokenizeCard: 'true',
+      meta,
     };
 
     try {

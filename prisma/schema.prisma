@@ -85,6 +85,8 @@ model Plan {
 
   is_active Boolean @default(true)
 
+  trial_days Int @default(0)
+
   project_id String
   project    Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
 
@@ -159,6 +161,7 @@ model PaymentMethod {
   createdAt DateTime @default(now())
 
   subscriptions Subscription[]
+  invoices      Invoice[]
 }
 
 enum SubscriptionStatus {
@@ -180,15 +183,19 @@ model Subscription {
   price_id          String
   payment_method_id String? // Optional so the subscription can be created before card capture
 
-  project       Project        @relation(fields: [project_id], references: [id])
-  customer      Customer       @relation(fields: [customer_id], references: [id])
-  price         Price          @relation(fields: [price_id], references: [id])
+  project  Project  @relation(fields: [project_id], references: [id])
+  customer Customer @relation(fields: [customer_id], references: [id])
+  price    Price    @relation(fields: [price_id], references: [id])
+
   paymentMethod PaymentMethod? @relation(fields: [payment_method_id], references: [id])
 
   status SubscriptionStatus
 
-  current_period_start DateTime
-  current_period_end   DateTime
+  trial_start DateTime?
+  trial_end   DateTime?
+
+  current_period_start DateTime?
+  current_period_end   DateTime?
 
   cancel_at_period_end Boolean   @default(false)
   canceled_at          DateTime?
@@ -220,6 +227,9 @@ model Invoice {
   subscription_id String
   subscription    Subscription @relation(fields: [subscription_id], references: [id], onDelete: Cascade)
 
+  payment_method_id String?
+  paymentMethod     PaymentMethod? @relation(fields: [payment_method_id], references: [id])
+
   amount Int
 
   status InvoiceStatus
@@ -249,6 +259,8 @@ model PaymentAttempt {
   status PaymentAttemptStatus
 
   error_message String?
+
+  provider_response Json?
 
   createdAt DateTime @default(now())
 }

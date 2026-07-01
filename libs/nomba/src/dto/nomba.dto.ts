@@ -1,5 +1,17 @@
+export type NombaEventType =
+  | 'payment_success'
+  | 'virtual_account.funded'
+  | 'transfer.success'
+  | 'transfer.failed'
+  | 'mandate.debit_success'
+  | 'payout_success'
+  | 'payment_failed'
+  | 'payment_reversal'
+  | 'payout_failed'
+  | 'payout_refund';
+
 export interface NombaWebhookPayload {
-  event_type: string;
+  event_type: NombaEventType;
   requestId: string;
   data: NombaWebhookData;
 }

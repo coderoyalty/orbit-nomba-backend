@@ -65,18 +65,6 @@ export class CreateSubscriptionDto {
 
   @ApiProperty({
     description:
-      'The date and time the subscription should start. If omitted, the subscription starts immediately after successful payment.',
-    example: '2026-07-15T09:00:00.000Z',
-    required: false,
-    format: 'date-time',
-  })
-  @IsOptional()
-  @Type(() => Date)
-  @IsDate()
-  startDate?: Date;
-
-  @ApiProperty({
-    description:
       'The URL to redirect the customer to after a successful payment.',
     example: 'https://example.com/subscriptions/success',
   })

@@ -50,9 +50,14 @@ model Project {
   invoices Invoice[]
 }
 
+enum Environment {
+  live
+  test
+}
+
 model ProjectApiKey {
   key_hash   String
-  key_prefix String
+  key_prefix String // used to identify environment
 
   project_id String
   project    Project @relation(references: [id], fields: [project_id], onDelete: Cascade)
@@ -115,17 +120,19 @@ model Price {
 }
 
 model Customer {
-  id         String @id @default(cuid())
-  project_id String
+  id String @id @default(cuid())
 
-  project Project @relation(references: [id], fields: [project_id], onDelete: Cascade)
-  email   String
+  project_id String
+  project    Project @relation(references: [id], fields: [project_id], onDelete: Cascade)
+  email      String
+
+  environment Environment
 
   subscriptions  Subscription[]
   paymentMethods PaymentMethod[]
   invoices       Invoice[]
 
-  @@unique([project_id, email])
+  @@unique([project_id, email, environment])
 }
 
 model PaymentMethod {
@@ -140,6 +147,8 @@ model PaymentMethod {
   provider_token String
   last4          String
   brand          String
+
+  environment Environment
 
   is_default Boolean @default(false)
 
@@ -159,6 +168,8 @@ enum SubscriptionStatus {
 
 model Subscription {
   id String @id @default(cuid())
+
+  environment Environment
 
   project_id        String
   customer_id       String
@@ -193,6 +204,8 @@ enum InvoiceStatus {
 
 model Invoice {
   id String @id @default(cuid())
+
+  environment Environment
 
   project_id String
   project    Project @relation(fields: [project_id], references: [id], onDelete: Cascade)

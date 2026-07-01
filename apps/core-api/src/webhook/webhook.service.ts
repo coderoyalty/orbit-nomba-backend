@@ -9,12 +9,16 @@ import {
   NombaWebhookData,
   NombaWebhookPayload,
 } from '@orbit/nomba/dto/nomba.dto';
+import { SubscriptionDispatcher } from '@queue/queue/subscription-dispatcher.service';
 
 @Injectable()
 export class WebhookService {
   private readonly logger = new Logger(WebhookService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private subDispatcher: SubscriptionDispatcher,
+  ) {}
 
   async handleNomba(payload: NombaWebhookPayload) {
     const { event_type, data, requestId } = payload;
@@ -53,13 +57,6 @@ export class WebhookService {
       },
     });
 
-    const queuePayload = {
-      token,
-      last4,
-      brand,
-      subscription,
-    };
-
     if (!subscription) {
       throw new NotFoundException('Invalid subscription ID');
     }
@@ -83,15 +80,24 @@ export class WebhookService {
       return;
     }
 
+    const dispatchPayload = {
+      token,
+      brand,
+      last4,
+      subscriptionId: subscription.id,
+    };
+
     if (subscription.price.plan.trial_days > 0) {
       // save payment token
       // refund authorization
       // update subscription trial period
       //TODO: dispatch trial subscription
+      this.subDispatcher.dispatchTrial(dispatchPayload);
     } else {
       // save payment token
       // update subscription next billing period.
       //TODO: dispatch first subscription
+      this.subDispatcher.dispatchFirstPayment(dispatchPayload);
     }
   }
 

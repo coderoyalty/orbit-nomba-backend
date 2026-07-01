@@ -35,6 +35,12 @@
       ],
       "@orbit/nomba/*": [
         "libs/nomba/src/*"
+      ],
+      "@queue/queue": [
+        "libs/queue/src"
+      ],
+      "@queue/queue/*": [
+        "libs/queue/src/*"
       ]
     }
   }

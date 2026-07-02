@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
-import { CoreWorkerController } from './core-worker.controller';
 import { CoreWorkerService } from './core-worker.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { DatabaseModule } from '@app/database';
 import { QueueNames } from '@queue/queue';
+import { SubscriptionProcessor } from './subscriptions/subscription.processor';
+import { SubscriptionService } from './subscriptions/subscription.service';
 
 @Module({
   imports: [
@@ -33,6 +34,6 @@ import { QueueNames } from '@queue/queue';
     BullModule.registerQueue({ name: QueueNames.SUBSCRIPTIONS }),
     DatabaseModule,
   ],
-  providers: [CoreWorkerService],
+  providers: [CoreWorkerService, SubscriptionService, SubscriptionProcessor],
 })
 export class CoreWorkerModule {}

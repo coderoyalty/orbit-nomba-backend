@@ -51,7 +51,7 @@ export class SubScriptionService {
           // They already have a successfully running subscription
           {
             status: {
-              in: ['active', 'trialing'],
+              in: ['active', 'trialing', 'past_due'],
             },
           },
           // They have a pending checkout that is STILL VALID
@@ -100,7 +100,7 @@ export class SubScriptionService {
             price_id: price.id,
             customer_id: customer.id,
             status: 'incomplete',
-            environment: 'test',
+            environment: environment,
           },
         });
 

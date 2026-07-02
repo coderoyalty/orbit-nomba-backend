@@ -59,6 +59,22 @@ export class ProjectsService {
     return customers;
   }
 
+  //TODO: pagination, subscriptions filtering.
+  async findSubscriptions(
+    projectId: string,
+    accountId: string,
+    env: Environment,
+  ) {
+    const subscriptions = await this.prisma.subscription.findMany({
+      where: {
+        project: { id: projectId, account_id: accountId },
+        environment: env,
+      },
+    });
+
+    return subscriptions;
+  }
+
   async deleteOne(projectId: string, accountId: string) {
     const ifExist = await this.prisma.project.findFirst({
       where: {

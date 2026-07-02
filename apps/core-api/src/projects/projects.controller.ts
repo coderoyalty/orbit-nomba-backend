@@ -8,6 +8,7 @@ import {
   Param,
   Post,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ProjectsService } from './projects.service';
 import { CurrentAccount } from '../shared/decorators/current-account.decorator';
@@ -15,6 +16,7 @@ import { CreateProjectDto } from './dto/create-project.dto';
 import { DashboardAuthGuard } from '../shared/guards/dashboard-auth.guard';
 import { ActiveEnv } from '../shared/decorators/env.decorator';
 import { Environment } from '@app/database';
+import { DashboardEnvInterceptor } from '../shared/interceptors/dashboard-env.interceptors';
 
 @UseGuards(DashboardAuthGuard)
 @Controller('dashboard/projects')
@@ -37,6 +39,7 @@ export class ProjectsController {
     return projects;
   }
 
+  @UseInterceptors(DashboardEnvInterceptor)
   @Get(':id/customers')
   async findAllCustomers(
     @CurrentAccount('sub') accountId: string,
@@ -44,6 +47,16 @@ export class ProjectsController {
     @Param('id') id: string,
   ) {
     return this.projectsService.findCustomers(id, accountId, env);
+  }
+
+  @UseInterceptors(DashboardEnvInterceptor)
+  @Get(':id/subscriptions')
+  async findSubscriptions(
+    @CurrentAccount('sub') accountId: string,
+    @ActiveEnv() env: Environment,
+    @Param('id') id: string,
+  ) {
+    return this.projectsService.findSubscriptions(id, accountId, env);
   }
 
   @Delete(':id')

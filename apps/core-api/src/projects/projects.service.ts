@@ -1,4 +1,4 @@
-import { PrismaService } from '@app/database';
+import { Environment, PrismaService } from '@app/database';
 import {
   Injectable,
   NotFoundException,
@@ -42,6 +42,21 @@ export class ProjectsService {
     });
 
     return projects;
+  }
+
+  //TODO: pagination.
+  async findCustomers(projectId: string, accountId: string, env: Environment) {
+    const customers = await this.prisma.customer.findMany({
+      where: {
+        project: {
+          id: projectId,
+          account_id: accountId,
+        },
+        environment: env,
+      },
+    });
+
+    return customers;
   }
 
   async deleteOne(projectId: string, accountId: string) {

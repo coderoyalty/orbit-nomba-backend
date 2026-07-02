@@ -13,6 +13,8 @@ import { ProjectsService } from './projects.service';
 import { CurrentAccount } from '../shared/decorators/current-account.decorator';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { DashboardAuthGuard } from '../shared/guards/dashboard-auth.guard';
+import { ActiveEnv } from '../shared/decorators/env.decorator';
+import { Environment } from '@app/database';
 
 @UseGuards(DashboardAuthGuard)
 @Controller('dashboard/projects')
@@ -33,6 +35,15 @@ export class ProjectsController {
   async findAll(@CurrentAccount('sub') accountId: string) {
     const projects = await this.projectsService.findAll(accountId);
     return projects;
+  }
+
+  @Get(':id/customers')
+  async findAllCustomers(
+    @CurrentAccount('sub') accountId: string,
+    @ActiveEnv() env: Environment,
+    @Param('id') id: string,
+  ) {
+    return this.projectsService.findCustomers(id, accountId, env);
   }
 
   @Delete(':id')

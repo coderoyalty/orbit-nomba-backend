@@ -70,6 +70,15 @@ export class ProjectsService {
         project: { id: projectId, account_id: accountId },
         environment: env,
       },
+      include: {
+        customer: true,
+        paymentMethod: true,
+        price: {
+          include: {
+            plan: true,
+          },
+        },
+      },
     });
 
     return subscriptions;

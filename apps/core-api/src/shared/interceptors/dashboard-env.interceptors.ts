@@ -27,7 +27,7 @@ export class DashboardEnvInterceptor implements NestInterceptor {
       );
     }
 
-    request.environment = envType as any;
+    request.environment = envHeader as Environment;
 
     return next.handle();
   }

@@ -13,7 +13,7 @@ const clientApiProjectFactory = (
   const request = context.switchToHttp().getRequest<ApiKeyRequest>();
   const project = request.project;
 
-  return project;
+  return { project, environment: request.environment };
 };
 
 export const ApiProjectContext = createParamDecorator(clientApiProjectFactory);

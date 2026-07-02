@@ -106,7 +106,7 @@ export class NombaService {
           headers: { ...config.header },
         }),
       );
-      return res;
+      return res.data;
     } catch (error) {
       console.log((error as AxiosError).message);
       throw error;

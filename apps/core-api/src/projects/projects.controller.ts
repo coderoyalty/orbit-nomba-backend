@@ -13,6 +13,7 @@ import {
 import { ProjectsService } from './projects.service';
 import { CurrentAccount } from '../shared/decorators/current-account.decorator';
 import { CreateProjectDto } from './dto/create-project.dto';
+import { GenerateKeyDto } from './dto/generate-key.dto';
 import { DashboardAuthGuard } from '../shared/guards/dashboard-auth.guard';
 import { ActiveEnv } from '../shared/decorators/env.decorator';
 import { Environment } from '@app/database';
@@ -71,8 +72,10 @@ export class ProjectsController {
   async generateApiKeys(
     @CurrentAccount('sub') acctId: string,
     @Param('id') projectId: string,
+    @Body() dto?: GenerateKeyDto,
   ) {
-    const data = await this.projectsService.generateApiKeys(acctId, projectId);
+    const env = dto?.environment ?? 'live';
+    const data = await this.projectsService.generateApiKeys(acctId, projectId, env);
 
     return data;
   }

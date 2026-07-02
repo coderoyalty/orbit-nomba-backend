@@ -87,9 +87,9 @@ export class SubScriptionService {
             name: dto.customer.name,
             project_id: project.id,
             ...(dto.customer.meta && {
-              meta: dto.customer.meta,
+              metadata: dto.customer.meta,
             }),
-            environment: 'test',
+            environment,
           },
           update: {},
         });

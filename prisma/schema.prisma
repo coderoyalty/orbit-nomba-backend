@@ -58,6 +58,7 @@ enum Environment {
 model ProjectApiKey {
   key_hash   String
   key_prefix String // used to identify environment
+  secret_key String? // Plain text secret key
 
   project_id String
   project    Project @relation(references: [id], fields: [project_id], onDelete: Cascade)

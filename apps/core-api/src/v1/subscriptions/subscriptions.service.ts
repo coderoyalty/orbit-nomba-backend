@@ -108,9 +108,6 @@ export class SubScriptionService {
       },
     );
 
-    //TODO: set project environment
-    const env = 'test';
-
     const priceAmount =
       (price.plan.trial_days > 0
         ? CARD_AUTHORIZATION_AMOUNT
@@ -123,7 +120,7 @@ export class SubScriptionService {
         customer_email: customer.email,
         redirect_url: dto.redirectUrl,
       },
-      env,
+      environment,
     );
   }
 }

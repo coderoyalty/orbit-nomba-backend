@@ -1,5 +1,6 @@
 import { Prisma, PrismaService, Subscription } from '@app/database';
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { NombaService } from '@orbit/nomba';
 import { TrialSubscriptionJob } from '@queue/queue';
 import { DateUtils } from 'apps/core-api/utils/date.util';
 import { Job } from 'bullmq';
@@ -8,43 +9,54 @@ import { Job } from 'bullmq';
 export class SubscriptionService {
   private readonly logger = new Logger(SubscriptionService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private nomba: NombaService,
+  ) {}
 
   async processTrial(job: Job<TrialSubscriptionJob>) {
     const payload = job.data;
+
+    /**
+     * Flow: Verify Payment -> Save PaymentMethod (for recurring payment) ->
+     * Update Subscription to trailing -> Refund authorization charge (TODO: Schedule refund job)
+     */
+
+    const res = await this.nomba.verifyTransaction<{
+      data: { id: string; status: string };
+    }>(
+      { id: payload.transaction.id, type: 'transactionRef' },
+      payload.environment,
+    );
 
     this.logger.log(
       `Processing trial subscription for ${payload.subscriptionId}`,
     );
 
-    const subscription = await this.prisma.subscription.findFirst({
-      where: { id: payload.subscriptionId },
-      include: {
-        price: {
-          include: { plan: true },
-        },
-      },
-    });
-
-    if (!subscription) {
-      throw new Error('Subscription does not exist');
-    }
-
-    // guard against duplicate processing.
-    if (subscription.status !== 'incomplete') {
-      this.logger.warn(
-        `Subscription ${subscription.id} is already ${subscription.status}. Skipping.`,
-      );
-      return;
-    }
-
-    const trialStart = new Date();
-    const trialEnd = DateUtils.addDays(
-      trialStart,
-      subscription.price.plan.trial_days,
-    );
-
     await this.prisma.$transaction(async (tx) => {
+      const subscription = await tx.subscription.findUnique({
+        where: { id: payload.subscriptionId },
+        include: {
+          price: {
+            include: { plan: true },
+          },
+        },
+      });
+
+      if (!subscription) {
+        throw new Error('Subscription does not exist');
+      }
+
+      if (subscription.status !== 'incomplete') {
+        return;
+      }
+
+      const trialStart = new Date();
+      const trialEnd = DateUtils.addDays(
+        trialStart,
+        subscription.price.plan.trial_days,
+      );
+
       const paymentMethod = await this.savePaymentToken(
         tx,
         payload,
@@ -61,6 +73,12 @@ export class SubscriptionService {
         },
       });
     });
+
+    //TODO: delegate to refund job.
+    await this.nomba.refundTransaction(
+      payload.transaction.id, // the transaction ID.
+      payload.environment,
+    );
   }
 
   /**
@@ -69,68 +87,96 @@ export class SubscriptionService {
   async processFirstPayment(job: Job<TrialSubscriptionJob>) {
     const payload = job.data;
 
+    /**
+     * Flow: Verify Transaction -> Save payment method (for )
+     */
+
+    //1. verify transaction
+    const res = await this.nomba.verifyTransaction<{
+      data: { id: string; status: string; timeCompleted: string };
+    }>(
+      { id: payload.transaction.id, type: 'transactionRef' },
+      payload.environment,
+    );
+
+    if (res.data.status !== 'SUCCESS') {
+      throw new Error('Payment was not successful.');
+    }
+
     this.logger.log(`Processing first payment for ${payload.subscriptionId}`);
 
-    const subscription = await this.prisma.subscription.findFirst({
-      where: { id: payload.subscriptionId },
-      include: {
-        price: {
-          include: { plan: true },
-        },
-      },
-    });
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        const subscription = await tx.subscription.findUnique({
+          where: { id: payload.subscriptionId },
+          include: {
+            price: {
+              include: { plan: true },
+            },
+          },
+        });
 
-    if (!subscription) {
-      throw new Error('Subscription does not exist');
-    }
+        if (!subscription) {
+          throw new Error('Subscription does not exist');
+        }
 
-    // guard against duplicate processing.
-    if (subscription.status !== 'incomplete') {
-      this.logger.warn(
-        `Subscription ${subscription.id} is already ${subscription.status}. Skipping.`,
-      );
-      return;
-    }
+        if (subscription.status !== 'incomplete') {
+          return;
+        }
 
-    const price = subscription.price;
+        const price = subscription.price;
 
-    await this.prisma.$transaction(async (tx) => {
-      const paymentMethod = await this.savePaymentToken(
-        tx,
-        payload,
-        subscription,
-      );
+        const paymentMethod = await this.savePaymentToken(
+          tx,
+          payload,
+          subscription,
+        );
 
-      await tx.invoice.create({
-        data: {
-          amount: price.unit_amount,
-          due_at: new Date(), //TODO:
-          environment: subscription.environment,
-          status: 'paid',
-          subscription_id: subscription.id,
-          customer_id: subscription.customer_id,
-          project_id: subscription.project_id,
-        },
+        const current_period_start = new Date(res.data.timeCompleted);
+
+        const current_period_end = DateUtils.calculatePeriodEnd(
+          current_period_start,
+          price.billing_interval,
+          price.billing_interval_count,
+        );
+
+        await tx.invoice.create({
+          data: {
+            amount: price.unit_amount,
+            due_at: current_period_start,
+            paid_at: current_period_start,
+            environment: subscription.environment,
+            status: 'paid',
+            subscription_id: subscription.id,
+            customer_id: subscription.customer_id,
+            project_id: subscription.project_id,
+            period_start: current_period_start,
+            period_end: current_period_end,
+          },
+        });
+
+        await tx.subscription.update({
+          where: { id: subscription.id },
+          data: {
+            status: 'active',
+            current_period_start: current_period_start,
+            current_period_end: current_period_end,
+            payment_method_id: paymentMethod.id,
+          },
+        });
       });
 
-      const current_period_start = new Date();
-
-      const current_period_end = DateUtils.calculatePeriodEnd(
-        current_period_start,
-        price.billing_interval,
-        price.billing_interval_count,
+      this.logger.log(
+        `Subscription ${payload.subscriptionId} activated successfully.`,
+      );
+    } catch (err) {
+      this.logger.error(
+        `Failed processing subscription ${payload.subscriptionId}`,
+        err instanceof Error ? err.stack : undefined,
       );
 
-      await tx.subscription.update({
-        where: { id: subscription.id },
-        data: {
-          status: 'active',
-          current_period_start: current_period_start,
-          current_period_end: current_period_end,
-          payment_method_id: paymentMethod.id,
-        },
-      });
-    });
+      throw err;
+    }
   }
 
   private async savePaymentToken(

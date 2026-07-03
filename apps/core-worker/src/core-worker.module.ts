@@ -6,6 +6,7 @@ import { DatabaseModule } from '@app/database';
 import { QueueNames } from '@queue/queue';
 import { SubscriptionProcessor } from './subscriptions/subscription.processor';
 import { SubscriptionService } from './subscriptions/subscription.service';
+import { NombaModule } from '@orbit/nomba';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { SubscriptionService } from './subscriptions/subscription.service';
     }),
     BullModule.registerQueue({ name: QueueNames.SUBSCRIPTIONS }),
     DatabaseModule,
+    NombaModule,
   ],
   providers: [CoreWorkerService, SubscriptionService, SubscriptionProcessor],
 })

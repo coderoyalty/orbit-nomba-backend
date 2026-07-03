@@ -235,12 +235,17 @@ model Invoice {
 
   status InvoiceStatus
 
+  period_start DateTime
+  period_end   DateTime
+
   due_at  DateTime
   paid_at DateTime?
 
   createdAt DateTime @default(now())
 
   paymentAttempts PaymentAttempt[]
+
+  @@unique([subscription_id, period_start])
 }
 
 enum PaymentAttemptStatus {

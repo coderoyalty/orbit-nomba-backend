@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  HttpException,
+  HttpStatus,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -7,10 +9,10 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { NombaAuthService } from './nomba-auth.service';
-import { EnvironmentType } from './types';
+import { EnvironmentType, NombaSuccessResponse } from './types';
 import { HttpService } from '@nestjs/axios';
 import { catchError, firstValueFrom } from 'rxjs';
-import { AxiosError } from 'axios';
+import axios, { AxiosError } from 'axios';
 
 interface AccountLookupResponse {
   accountName: string;
@@ -28,6 +30,8 @@ export interface CheckoutPayload {
   customer_email: string;
   redirect_url: string;
 }
+
+type AsyncFn<TResult> = () => Promise<TResult>;
 
 @Injectable()
 export class NombaService {
@@ -130,6 +134,52 @@ export class NombaService {
     return data;
   }
 
+  async refundTransaction<T>(transactionId: string, env: EnvironmentType) {
+    const config = await this.requestConfig(env, '/checkout/refund');
+
+    const { data } = await this.execute(async () => {
+      const data = await firstValueFrom(
+        this.http.post<T>(
+          config.url,
+          { transactionId },
+          {
+            headers: { ...config.header },
+          },
+        ),
+      );
+
+      return data;
+    });
+
+    return data;
+  }
+
+  async verifyTransaction<T>(
+    transaction: {
+      id: string;
+      type: 'orderReference' | 'transactionRef';
+    },
+    env: EnvironmentType,
+  ): Promise<T> {
+    const config = await this.requestConfig(
+      env,
+      `/transactions/accounts/${this.nombaAuth.subAccountId}/single`,
+    );
+
+    return this.execute(async () => {
+      const { data } = await firstValueFrom(
+        this.http.get<T>(config.url, {
+          params: {
+            [transaction.type]: transaction.id,
+          },
+          headers: config.header,
+        }),
+      );
+
+      return data;
+    });
+  }
+
   private async requestConfig(env: EnvironmentType, endpoint: string = '') {
     const ctx = await this.nombaAuth.getAuthContext(env);
 
@@ -149,5 +199,33 @@ export class NombaService {
       header: headerPayload,
       url: fullUrl,
     };
+  }
+
+  private async execute<TResult>(fn: AsyncFn<TResult>): Promise<TResult> {
+    try {
+      return await fn();
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        this.mapAxiosError(err);
+      }
+
+      throw err;
+    }
+  }
+
+  private mapAxiosError(error: AxiosError): never {
+    switch (error.response?.status) {
+      case 400:
+        throw new BadRequestException(error.response.data);
+
+      case 401:
+        throw new UnauthorizedException();
+
+      case 404:
+        throw new NotFoundException();
+
+      default:
+        throw new InternalServerErrorException();
+    }
   }
 }

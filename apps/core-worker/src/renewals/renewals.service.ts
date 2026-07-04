@@ -1,6 +1,6 @@
-import { PrismaService } from '@app/database';
+import { PrismaService, SubscriptionStatus } from '@app/database';
 import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { EnvironmentType, NombaService } from '@orbit/nomba';
 import { QueueNames, RenewalJobs } from '@queue/queue';
 import { DateUtils } from 'apps/core-api/utils/date.util';
@@ -19,6 +19,8 @@ interface ChargeVerificationData {
 
 @Injectable()
 export class RenewalsService {
+  private readonly logger = new Logger(RenewalsService.name);
+
   constructor(
     private prisma: PrismaService,
     private nomba: NombaService,
@@ -27,35 +29,37 @@ export class RenewalsService {
   ) {}
 
   async processTrialSubscriptionRenewal(job: Job<TrialRenewalPayload>) {
-    const payload = job.data;
+    await this.handleRenewal(job.data.subscriptionId, true);
+  }
+
+  async processSubscriptionRenewal(job: Job<TrialRenewalPayload>) {
+    await this.handleRenewal(job.data.subscriptionId, false);
+  }
+
+  /**
+   * Consolidated logic for both trial and standard renewals.
+   */
+  private async handleRenewal(subscriptionId: string, isTrial: boolean) {
     const now = new Date();
 
-    /**
-     * Flow:
-     * verify existence of payment method/cancel trial if no payment method ->
-     * create charge invoice -> attempt card charge -> cancel subscription if failed -> dispatch charge verification.
-     */
-
     const subscription = await this.prisma.subscription.findUniqueOrThrow({
-      where: { id: payload.subscriptionId },
+      where: { id: subscriptionId },
       include: {
-        paymentMethod: {
-          select: {
-            provider_token: true,
-          },
-        },
+        paymentMethod: { select: { provider_token: true } },
         price: true,
         customer: true,
       },
     });
+
+    const failedStatus = isTrial ? 'canceled' : 'past_due';
 
     if (!subscription.paymentMethod) {
       await this.prisma.$transaction(async (tx) => {
         await tx.subscription.update({
           where: { id: subscription.id },
           data: {
-            status: 'canceled',
-            canceled_at: now,
+            status: failedStatus,
+            ...(isTrial && { canceled_at: now }), // Only set canceled_at if actually canceled
           },
         });
 
@@ -64,11 +68,9 @@ export class RenewalsService {
             amount: subscription.price.unit_amount,
             environment: subscription.environment,
             status: 'failed',
-            //
             project_id: subscription.project_id,
             customer_id: subscription.customer_id,
             subscription_id: subscription.id,
-            //
             period_start: now,
             period_end: now,
             due_at: now,
@@ -78,12 +80,11 @@ export class RenewalsService {
         await tx.paymentAttempt.create({
           data: {
             status: 'failed',
-            error_message: 'Could not process payment at trial end.',
+            error_message: `Could not process payment. No payment method found.`,
             invoice_id: invoice.id,
           },
         });
       });
-
       return;
     }
 
@@ -101,75 +102,102 @@ export class RenewalsService {
       },
     });
 
-    const res = await this.nomba.chargeCard<{
-      status: boolean;
-      message: string;
-      orderId: string;
-      orderReference: string;
-    }>(
-      {
-        order: {
-          customer_email: subscription.customer.email,
-          transaction_reference: pendingInvoice.id,
-          redirect_url: '',
-          amount: subscription.price.unit_amount / 100,
+    try {
+      const res = await this.nomba.chargeCard<{
+        status: boolean;
+        message: string;
+        orderId: string;
+        orderReference: string;
+      }>(
+        {
+          order: {
+            customer_email: subscription.customer.email,
+            transaction_reference: pendingInvoice.id,
+            redirect_url: '',
+            amount: subscription.price.unit_amount / 100,
+          },
+          token: subscription.paymentMethod.provider_token,
         },
-        token: subscription.paymentMethod.provider_token,
-      },
-      subscription.environment,
-    );
+        subscription.environment,
+      );
 
-    if (!res.status) {
-      await this.prisma.$transaction(async (tx) => {
-        await tx.subscription.update({
-          where: { id: subscription.id },
-          data: {
-            status: 'canceled',
-            canceled_at: now,
-          },
-        });
+      if (!res.status) {
+        await this.handleFailedCharge(
+          subscription.id,
+          pendingInvoice.id,
+          failedStatus,
+          isTrial,
+          res.description || 'Gateway rejected tokenized charge.',
+        );
+        return;
+      }
 
-        // Update the pending invoice to failed
-        await tx.invoice.update({
-          where: { id: pendingInvoice.id },
-          data: { status: 'failed' },
-        });
+      await this.queue.add(
+        RenewalJobs.CHARGE_STATUS,
+        {
+          invoiceId: pendingInvoice.id,
+          subscriptionId: subscription.id,
+          orderReference: res.data.orderReference,
+          environment: subscription.environment,
+        },
+        { delay: 10000 },
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to reach payment gateway for sub ${subscription.id}`,
+        error,
+      );
 
-        await tx.paymentAttempt.create({
-          data: {
-            status: 'failed',
-            error_message:
-              res.description || 'Gateway rejected tokenized charge.',
-            invoice_id: pendingInvoice.id,
-          },
-        });
+      await this.prisma.invoice.update({
+        where: { id: pendingInvoice.id },
+        data: { status: 'failed' },
       });
 
       return;
     }
+  }
 
-    // dispatch job that verifies charge status and update payment
-    await this.queue.add(
-      RenewalJobs.CHARGE_STATUS,
-      {
-        invoiceId: pendingInvoice.id,
-        subscriptionId: subscription.id,
-        orderReference: res.data.orderReference,
-        environment: subscription.environment,
-      },
-      { delay: 10000 }, // 10 seconds delay
-    );
+  private async handleFailedCharge(
+    subscriptionId: string,
+    invoiceId: string,
+    subStatus: SubscriptionStatus,
+    isTrial: boolean,
+    errorMessage: string,
+  ) {
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      await tx.subscription.update({
+        where: { id: subscriptionId },
+        data: {
+          status: subStatus,
+          ...(isTrial && { canceled_at: now }),
+        },
+      });
+
+      await tx.invoice.update({
+        where: { id: invoiceId },
+        data: { status: 'failed' },
+      });
+
+      await tx.paymentAttempt.create({
+        data: {
+          status: 'failed',
+          error_message: errorMessage,
+          invoice_id: invoiceId,
+        },
+      });
+    });
   }
 
   async processChargeStatus(job: Job<ChargeVerificationData>) {
-    const jobData = job.data;
+    const { invoiceId } = job.data;
+    const now = new Date();
+
     const invoice = await this.prisma.invoice.findUniqueOrThrow({
-      where: { id: jobData.invoiceId },
+      where: { id: invoiceId },
       include: {
         subscription: {
-          include: {
-            price: true,
-          },
+          include: { price: true },
         },
       },
     });
@@ -179,50 +207,46 @@ export class RenewalsService {
       invoice.environment,
     );
 
-    const now = new Date();
+    const isPaymentFailed =
+      !res.status || res.data?.status === 'PAYMENT_FAILED';
 
-    if (!res.status || res.data.status === 'PAYMENT_FAILED') {
+    if (isPaymentFailed) {
+      const isTrialing = invoice.subscription.status === 'trialing';
+      const failedStatus = isTrialing ? 'canceled' : 'past_due';
+
       await this.prisma.$transaction(async (tx) => {
         await tx.invoice.update({
           where: { id: invoice.id },
-          data: {
-            status: 'failed',
-          },
+          data: { status: 'failed' },
         });
 
         await tx.subscription.update({
           where: { id: invoice.subscription_id },
           data: {
-            status: 'canceled',
-            canceled_at: now,
+            status: failedStatus,
+            ...(isTrialing && { canceled_at: now }), // Removed canceled_at for past_due
           },
         });
 
         await tx.paymentAttempt.create({
           data: {
             status: 'failed',
-            error_message: 'Could not process payment at trial end.',
+            error_message: 'Could not process payment during verification.',
             invoice_id: invoice.id,
           },
         });
 
-        if (invoice.subscription.payment_method_id) {
+        if (isTrialing && invoice.subscription.payment_method_id) {
           await tx.paymentMethod.update({
-            where: {
-              id: invoice.subscription.payment_method_id,
-            },
-            data: {
-              is_default: false,
-            },
+            where: { id: invoice.subscription.payment_method_id },
+            data: { is_default: false },
           });
         }
       });
-
       return;
     }
 
     const price = invoice.subscription.price;
-
     const period_end = DateUtils.calculatePeriodEnd(
       now,
       price.billing_interval,
@@ -249,7 +273,5 @@ export class RenewalsService {
         },
       });
     });
-
-    return;
   }
 }

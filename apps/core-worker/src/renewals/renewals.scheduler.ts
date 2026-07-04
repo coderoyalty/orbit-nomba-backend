@@ -15,12 +15,12 @@ export class RenewalsScheduler {
   ) {}
 
   @Cron(CronExpression.EVERY_HOUR)
-  async scheduleExpiredTrials() {
+  async schedulerExpiredSubscriptionsRenewal() {
     const now = new Date();
 
     const subscriptions = await this.prisma.subscription.findMany({
       where: {
-        status: 'trialing',
+        status: { in: ['active', 'trialing'] },
         trial_end: {
           lte: now,
         },
@@ -36,7 +36,9 @@ export class RenewalsScheduler {
 
     for (const subscription of subscriptions) {
       this.queue.add(
-        RenewalJobs.TRIAL,
+        subscription.status === 'trialing'
+          ? RenewalJobs.TRIAL
+          : RenewalJobs.RENEW,
         {
           subscriptionId: subscription.id,
         },

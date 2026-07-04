@@ -18,6 +18,9 @@ export class RenewalsProcessor extends WorkerHost {
       case RenewalJobs.TRIAL:
         await this.service.processTrialSubscriptionRenewal(job);
         break;
+      case RenewalJobs.RENEW:
+        await this.service.processSubscriptionRenewal(job);
+        break;
       case RenewalJobs.CHARGE_STATUS:
         await this.service.processChargeStatus(job);
         break;

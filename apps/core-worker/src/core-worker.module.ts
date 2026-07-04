@@ -7,9 +7,14 @@ import { QueueNames } from '@queue/queue';
 import { SubscriptionProcessor } from './subscriptions/subscription.processor';
 import { SubscriptionService } from './subscriptions/subscription.service';
 import { NombaModule } from '@orbit/nomba';
+import { ScheduleModule } from '@nestjs/schedule';
+import { RenewalsService } from './renewals/renewals.service';
+import { RenewalsProcessor } from './renewals/renewals.processor';
+import { RenewalsScheduler } from './renewals/renewals.scheduler';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,
     }),
@@ -32,10 +37,21 @@ import { NombaModule } from '@orbit/nomba';
       }),
       inject: [ConfigService],
     }),
-    BullModule.registerQueue({ name: QueueNames.SUBSCRIPTIONS }),
+    BullModule.registerQueue(
+      ...(() => {
+        return Object.values(QueueNames).map((v) => ({ name: v }));
+      })(),
+    ),
     DatabaseModule,
     NombaModule,
   ],
-  providers: [CoreWorkerService, SubscriptionService, SubscriptionProcessor],
+  providers: [
+    CoreWorkerService,
+    SubscriptionService,
+    SubscriptionProcessor,
+    RenewalsService,
+    RenewalsScheduler,
+    RenewalsProcessor,
+  ],
 })
 export class CoreWorkerModule {}

@@ -5,10 +5,8 @@ export const QueueNames = {
 } as const;
 
 export const SubscriptionJobs = {
-  TRIAL: 'trial',
+  TRIAL: 'subscription-trial',
   FIRST_PAYMENT: 'first-payment',
-  RENEW: 'renew',
-  CHARGE_TRIAL: 'charge-trial',
 } as const;
 export type SubscriptionJobs =
   (typeof SubscriptionJobs)[keyof typeof SubscriptionJobs];
@@ -19,9 +17,3 @@ export const RenewalJobs = {
 } as const;
 
 export type RenewalJobs = (typeof RenewalJobs)[keyof typeof RenewalJobs];
-
-export const VerifyJobs = {
-  CHARGE_STATUS: 'verify-charge-status',
-} as const;
-
-export type VerifyJobs = (typeof VerifyJobs)[keyof typeof VerifyJobs];

@@ -93,7 +93,9 @@ export class SubscriptionService {
 
     //1. verify transaction
     const res = await this.nomba.verifyTransaction<{
-      data: { id: string; status: string; timeCompleted: string };
+      id: string;
+      status: string;
+      timeCompleted: string;
     }>(
       { id: payload.transaction.id, type: 'transactionRef' },
       payload.environment,

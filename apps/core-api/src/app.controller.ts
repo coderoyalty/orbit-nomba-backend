@@ -12,14 +12,27 @@ export class AppController {
   ) {}
 
   @Get()
-  getHello() {
-    this.subDispatcher.dispatchTrial({
-      brand: 'Verve',
-      last4: '1234',
-      subscriptionId: '',
-      token: '',
-    });
-    return { message: 'Orbit — A Subscriptions Engine built on Nomba' };
+  async getHello() {
+    const data = await this.nombaService.chargeCard(
+      {
+        order: {
+          transaction_reference: '1234667812000',
+          amount: 1,
+          customer_email: 'akannie33@gmail.com',
+          redirect_url: 'coderoyalty.outray.app',
+        },
+        token: '5185122670',
+      },
+      'live',
+    );
+
+    console.log(data);
+
+    // return this.nombaService.verifyTransaction(
+    //   { id: '1234567', type: 'orderReference' },
+    //   'live',
+    // );
+    // return { message: 'Orbit — A Subscriptions Engine built on Nomba' };
   }
 
   @Get('/account/lookup')
@@ -30,6 +43,16 @@ export class AppController {
     );
   }
 
+  @Get('/verify-transaction')
+  async verifyTransaction() {
+    const data = await this.nombaService.verifyTransaction(
+      { id: '1234667812000', type: 'orderReference' },
+      'live',
+    );
+
+    return { nomba: data };
+  }
+
   @Post('/account/checkout')
   async checkoutLink(@Body() body: any) {
     return this.nombaService.generateCheckoutLink(body, 'live');
@@ -37,6 +60,6 @@ export class AppController {
 
   @Get('/tokenized-cards')
   async tokenizedCard() {
-    return this.nombaService.listTokenizeCards('test');
+    return this.nombaService.listTokenizeCards('live');
   }
 }

@@ -9,9 +9,9 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { NombaAuthService } from './nomba-auth.service';
-import { EnvironmentType, NombaSuccessResponse } from './types';
+import { EnvironmentType, NombaResponse } from './nomba.types';
 import { HttpService } from '@nestjs/axios';
-import { catchError, firstValueFrom } from 'rxjs';
+import { firstValueFrom } from 'rxjs';
 import axios, { AxiosError } from 'axios';
 
 interface AccountLookupResponse {
@@ -42,15 +42,15 @@ export class NombaService {
     private http: HttpService,
   ) {}
 
-  async accountLookup(
+  async accountLookup<T = AccountLookupResponse>(
     payload: AccountLookupPayload,
     env: EnvironmentType,
-  ): Promise<AccountLookupResponse> {
+  ): Promise<T> {
     try {
       const config = await this.requestConfig(env, '/transfers/bank/lookup');
 
       const { data } = await firstValueFrom(
-        this.http.post(config.url, payload, {
+        this.http.post<NombaResponse<T>>(config.url, payload, {
           headers: { ...config.header },
         }),
       );
@@ -83,11 +83,11 @@ export class NombaService {
     }
   }
 
-  async generateCheckoutLink(
+  async generateCheckoutLink<T = unknown>(
     payload: CheckoutPayload,
     env: EnvironmentType,
     meta?: Record<string, string>,
-  ) {
+  ): Promise<NombaResponse<T>> {
     const config = await this.requestConfig(env, '/checkout/order');
 
     const orderPayload = {
@@ -106,7 +106,7 @@ export class NombaService {
 
     try {
       const res = await firstValueFrom(
-        this.http.post(config.url, orderPayload, {
+        this.http.post<NombaResponse<T>>(config.url, orderPayload, {
           headers: { ...config.header },
         }),
       );
@@ -117,29 +117,36 @@ export class NombaService {
     }
   }
 
-  async listTokenizeCards(env: EnvironmentType) {
+  async listTokenizeCards<T = unknown>(
+    env: EnvironmentType,
+  ): Promise<NombaResponse<T>> {
     const config = await this.requestConfig(
       env,
       '/checkout/tokenized-card-data',
     );
 
-    const { data } = await firstValueFrom(
-      this.http.get(config.url, {
-        headers: {
-          ...config.header,
-        },
-      }),
-    );
+    const { data } = await this.execute(async () => {
+      return await firstValueFrom(
+        this.http.get<NombaResponse<T>>(config.url, {
+          headers: {
+            ...config.header,
+          },
+        }),
+      );
+    });
 
     return data;
   }
 
-  async refundTransaction<T>(transactionId: string, env: EnvironmentType) {
+  async refundTransaction<T = unknown>(
+    transactionId: string,
+    env: EnvironmentType,
+  ): Promise<NombaResponse<T>> {
     const config = await this.requestConfig(env, '/checkout/refund');
 
     const { data } = await this.execute(async () => {
       const data = await firstValueFrom(
-        this.http.post<T>(
+        this.http.post<NombaResponse<T>>(
           config.url,
           { transactionId },
           {
@@ -154,21 +161,21 @@ export class NombaService {
     return data;
   }
 
-  async verifyTransaction<T>(
+  async verifyTransaction<T = unknown>(
     transaction: {
       id: string;
       type: 'orderReference' | 'transactionRef';
     },
     env: EnvironmentType,
-  ): Promise<T> {
+  ): Promise<NombaResponse<T>> {
     const config = await this.requestConfig(
       env,
       `/transactions/accounts/${this.nombaAuth.subAccountId}/single`,
     );
 
-    return this.execute(async () => {
+    return await this.execute(async () => {
       const { data } = await firstValueFrom(
-        this.http.get<T>(config.url, {
+        this.http.get<NombaResponse<T>>(config.url, {
           params: {
             [transaction.type]: transaction.id,
           },
@@ -178,6 +185,40 @@ export class NombaService {
 
       return data;
     });
+  }
+
+  async chargeCard<T = unknown>(
+    payload: { token: string; order: CheckoutPayload },
+    env: EnvironmentType,
+  ): Promise<NombaResponse<T>> {
+    const config = await this.requestConfig(
+      env,
+      '/checkout/tokenized-card-payment',
+    );
+
+    const order = {
+      orderReference: payload.order.transaction_reference,
+      customerEmail: payload.order.customer_email,
+      amount: payload.order.amount.toString(),
+      currency: 'NGN',
+      callbackUrl: payload.order.redirect_url,
+      accountId: this.nombaAuth.subAccountId,
+    };
+
+    const { data } = await this.execute(async () => {
+      return await firstValueFrom(
+        this.http.post<NombaResponse<T>>(
+          config.url,
+          {
+            tokenKey: payload.token,
+            order,
+          },
+          { headers: { ...config.header } },
+        ),
+      );
+    });
+
+    return data;
   }
 
   private async requestConfig(env: EnvironmentType, endpoint: string = '') {

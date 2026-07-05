@@ -10,8 +10,6 @@ import { PlansModule } from './plans/plans.module';
 import { NombaModule } from '@orbit/nomba';
 import { WebhookModule } from './webhook/webhook.module';
 import { BullModule } from '@nestjs/bullmq';
-import { QueueKeys } from 'bullmq';
-import { QueueNames } from '@queue/queue';
 import { QueueModule } from '@queue/queue/queue.module';
 
 @Module({

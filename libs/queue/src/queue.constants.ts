@@ -13,8 +13,8 @@ export type SubscriptionJobs =
   (typeof SubscriptionJobs)[keyof typeof SubscriptionJobs];
 
 export const RenewalJobs = {
-  TRIAL: 'renewal-trial',
-  RENEW: 'renew-subscription',
+  PROCESS_TRIAL: 'renewal-trial',
+  PROCESS_SUBSCRIPTION: 'renew-subscription',
   CHARGE_STATUS: 'verify-charge-status',
 } as const;
 

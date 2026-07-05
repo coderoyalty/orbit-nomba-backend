@@ -72,11 +72,15 @@ model WebhookEndpoint {
   id             String  @id @default(cuid())
   url            String
   signing_secret String
-  is_active      Boolean @default(true)
   project_id     String
   project        Project @relation(references: [id], fields: [project_id], onDelete: Cascade)
 
+  environment Environment
+
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([project_id, environment])
 }
 
 model Plan {
@@ -235,12 +239,17 @@ model Invoice {
 
   status InvoiceStatus
 
+  period_start DateTime
+  period_end   DateTime
+
   due_at  DateTime
   paid_at DateTime?
 
   createdAt DateTime @default(now())
 
   paymentAttempts PaymentAttempt[]
+
+  @@unique([subscription_id, period_start])
 }
 
 enum PaymentAttemptStatus {

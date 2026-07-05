@@ -5,10 +5,12 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { NombaService } from '@orbit/nomba';
 import {
   NombaWebhookData,
   NombaWebhookPayload,
 } from '@orbit/nomba/dto/nomba.dto';
+import { TrialSubscriptionJob } from '@queue/queue';
 import { SubscriptionDispatcher } from '@queue/queue/subscription-dispatcher.service';
 
 @Injectable()
@@ -17,6 +19,7 @@ export class WebhookService {
 
   constructor(
     private prisma: PrismaService,
+    private nomba: NombaService,
     private subDispatcher: SubscriptionDispatcher,
   ) {}
 
@@ -69,6 +72,13 @@ export class WebhookService {
       return;
     }
 
+    await this.nomba.verifyTransaction<{
+      data: { id: string; status: string; timeCompleted: string };
+    }>(
+      { id: subscriptionId, type: 'orderReference' },
+      subscription.environment,
+    );
+
     const existing = await this.prisma.paymentAttempt.findFirst({
       where: {
         provider_reference: data.transaction.transactionId,
@@ -80,11 +90,16 @@ export class WebhookService {
       return;
     }
 
-    const dispatchPayload = {
+    const dispatchPayload: TrialSubscriptionJob = {
       token,
       brand,
       last4,
       subscriptionId: subscription.id,
+      environment: subscription.environment,
+      transaction: {
+        amount: data.transaction.transactionAmount * 100,
+        id: data.transaction.transactionId,
+      },
     };
 
     if (subscription.price.plan.trial_days > 0) {

@@ -1,31 +1,21 @@
 import {
-  Controller,
   Get,
   Post,
   Body,
   Patch,
   Param,
   Delete,
-  UseGuards,
   NotFoundException,
 } from '@nestjs/common';
 import { PlansService } from './plans.service';
 import { CreatePlanDto, PriceDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
-import { DashboardAuthGuard } from '../shared/guards/dashboard-auth.guard';
-import { ProjectAccessGuard } from '../projects/guards/project-access.guard';
 import { CurrentProject } from '../shared/decorators/current-project.decorator';
 import type { Project } from '@app/database';
-import { ApiParam } from '@nestjs/swagger';
 import { ChangePriceDto } from './dto/change-price.dto';
+import { DashboardProjectController } from '../shared/decorators/dashboard.decorator';
 
-@ApiParam({
-  name: 'projectId',
-  type: String,
-  description: 'Project ID',
-})
-@UseGuards(DashboardAuthGuard, ProjectAccessGuard)
-@Controller('dashboard/projects/:projectId/plans')
+@DashboardProjectController('plans')
 export class PlansController {
   constructor(private readonly plansService: PlansService) {}
 

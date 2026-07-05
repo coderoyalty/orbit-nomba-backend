@@ -8,7 +8,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { config } from 'dotenv';
-import { EnvironmentType } from './types';
+import { EnvironmentType } from './nomba.types';
 
 interface CachedToken {
   accessToken: string;

@@ -1,25 +1,30 @@
 import { PrismaService, Project } from '@app/database';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateCustomerDto } from './dto/create-customer.dto';
+import { ProjectContext } from '../../shared/decorators/client-project.decorator';
 
 @Injectable()
 export class CustomersService {
   constructor(private prisma: PrismaService) {}
 
-  async create(project: Project, dto: CreateCustomerDto) {
+  async create(
+    { project, environment }: ProjectContext,
+    dto: CreateCustomerDto,
+  ) {
     const customer = await this.prisma.customer.create({
       data: {
         email: dto.email.toLowerCase(),
         project_id: project.id,
         name: dto.name,
         metadata: dto.metadata,
+        environment,
       },
     });
 
     return customer;
   }
 
-  async findOne(project: Project, id: string) {
+  async findOne({ project, environment }: ProjectContext, id: string) {
     const customer = await this.prisma.customer.findFirst({
       where: {
         id: id,

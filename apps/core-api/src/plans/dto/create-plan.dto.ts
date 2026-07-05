@@ -5,7 +5,9 @@ import {
   IsEnum,
   IsInt,
   IsNotEmpty,
+  IsNumber,
   IsObject,
+  IsOptional,
   IsString,
   Min,
   MinLength,
@@ -57,4 +59,13 @@ export class CreatePlanDto {
   @ValidateNested()
   @Type(() => PriceDto)
   price!: PriceDto;
+
+  @ApiPropertyOptional({
+    description:
+      'Number of days for free trial. Optional means none. Minimum of 1 when provided',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  trial_days?: number;
 }

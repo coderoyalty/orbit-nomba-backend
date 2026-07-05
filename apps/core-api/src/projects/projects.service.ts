@@ -1,4 +1,4 @@
-import { PrismaService } from '@app/database';
+import { Environment, PrismaService } from '@app/database';
 import {
   Injectable,
   NotFoundException,
@@ -38,10 +38,51 @@ export class ProjectsService {
       },
       include: {
         webhooks: {},
+        apiKeys: {},
       },
     });
 
     return projects;
+  }
+
+  //TODO: pagination.
+  async findCustomers(projectId: string, accountId: string, env: Environment) {
+    const customers = await this.prisma.customer.findMany({
+      where: {
+        project: {
+          id: projectId,
+          account_id: accountId,
+        },
+        environment: env,
+      },
+    });
+
+    return customers;
+  }
+
+  //TODO: pagination, subscriptions filtering.
+  async findSubscriptions(
+    projectId: string,
+    accountId: string,
+    env: Environment,
+  ) {
+    const subscriptions = await this.prisma.subscription.findMany({
+      where: {
+        project: { id: projectId, account_id: accountId },
+        environment: env,
+      },
+      include: {
+        customer: true,
+        paymentMethod: true,
+        price: {
+          include: {
+            plan: true,
+          },
+        },
+      },
+    });
+
+    return subscriptions;
   }
 
   async deleteOne(projectId: string, accountId: string) {
@@ -64,13 +105,17 @@ export class ProjectsService {
     return { message: 'Successfully deleted', project: project };
   }
 
-  async generateApiKeys(acctId: string, projectId: string) {
-    const prefix = 'sk_live';
+  async generateApiKeys(acctId: string, projectId: string, env: 'live' | 'test' = 'live') {
+    const prefix = env === 'live' ? 'sk_live' : 'sk_test';
     const secret_key = this.generateRandomString();
     const hash = this.hashApiKey(secret_key);
+    const fullSecretKey = `${prefix}_${secret_key}`;
 
     const existingKey = await this.prisma.projectApiKey.findFirst({
-      where: { project: { id: projectId, account_id: acctId } },
+      where: {
+        project: { id: projectId, account_id: acctId },
+        key_prefix: prefix,
+      },
     });
 
     if (existingKey) {
@@ -82,13 +127,13 @@ export class ProjectsService {
           },
         },
         data: {
-          key_prefix: prefix,
           key_hash: hash,
+          secret_key: fullSecretKey,
         },
       });
 
       return {
-        secret_key: `${prefix}_${secret_key}`,
+        secret_key: fullSecretKey,
       };
     }
 
@@ -96,12 +141,13 @@ export class ProjectsService {
       data: {
         key_prefix: prefix,
         key_hash: hash,
+        secret_key: fullSecretKey,
         project: { connect: { id: projectId, account_id: acctId } },
       },
     });
 
     return {
-      secret_key: `${prefix}_${secret_key}`,
+      secret_key: fullSecretKey,
     };
   }
 

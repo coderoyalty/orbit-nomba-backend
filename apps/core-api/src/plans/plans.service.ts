@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -19,6 +18,8 @@ export class PlansService {
         name: dto.name,
         description: dto.description,
         project: { connect: { id: project.id } },
+        trial_days: dto.trial_days ?? 0,
+        is_active: true,
         prices: {
           create: {
             billing_interval: dto.price.interval,

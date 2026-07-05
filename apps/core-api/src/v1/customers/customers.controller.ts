@@ -1,7 +1,9 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { CustomersService } from './customers.service';
-import { ClientApiProject } from '../../shared/decorators/client-project.decorator';
-import * as database from '@app/database';
+import {
+  ApiProjectContext,
+  type ProjectContext,
+} from '../../shared/decorators/client-project.decorator';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { ApiKeyGuard } from '../../shared/guards/api-key.guard';
 
@@ -12,17 +14,14 @@ export class CustomersController {
 
   @Post()
   create(
-    @ClientApiProject() project: database.Project,
+    @ApiProjectContext() ctx: ProjectContext,
     @Body() dto: CreateCustomerDto,
   ) {
-    return this.service.create(project, dto);
+    return this.service.create(ctx, dto);
   }
 
   @Get(':id')
-  findOne(
-    @ClientApiProject() project: database.Project,
-    @Param('id') id: string,
-  ) {
-    return this.service.findOne(project, id);
+  findOne(@ApiProjectContext() ctx: ProjectContext, @Param('id') id: string) {
+    return this.service.findOne(ctx, id);
   }
 }

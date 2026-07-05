@@ -1,4 +1,4 @@
-import { PrismaService, Project } from '@app/database';
+import { Environment, PrismaService, Project } from '@app/database';
 import {
   CanActivate,
   ExecutionContext,
@@ -10,6 +10,7 @@ import crypto from 'node:crypto';
 
 export interface ApiKeyRequest extends express.Request {
   project: Project;
+  environment: Environment;
 }
 
 @Injectable()
@@ -51,6 +52,7 @@ export class ApiKeyGuard implements CanActivate {
     }
 
     request.project = apiKey.project;
+    request.environment = environment as any;
     return true;
   }
 }

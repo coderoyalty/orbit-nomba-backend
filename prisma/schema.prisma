@@ -72,11 +72,15 @@ model WebhookEndpoint {
   id             String  @id @default(cuid())
   url            String
   signing_secret String
-  is_active      Boolean @default(true)
   project_id     String
   project        Project @relation(references: [id], fields: [project_id], onDelete: Cascade)
 
+  environment Environment
+
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([project_id, environment])
 }
 
 model Plan {

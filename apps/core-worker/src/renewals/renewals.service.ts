@@ -61,6 +61,7 @@ export class RenewalsService {
 
       const payload = {
         ...subscription,
+        paymentMethod: undefined, // contains card token for recurring debit.
       };
 
       const [_, event] = await this.prisma.$transaction([

@@ -66,18 +66,7 @@ export class SubscriptionService {
         subscription,
       );
 
-      const webhookPayload = {
-        plan: {
-          ...subscription.price.plan,
-          price: { ...subscription.price, plan: undefined },
-        },
-        subscription: {
-          ...subscription,
-          price: undefined,
-        },
-      };
-
-      await tx.subscription.update({
+      const updatedSubscription = await tx.subscription.update({
         where: { id: subscription.id },
         data: {
           status: 'trialing',
@@ -86,6 +75,16 @@ export class SubscriptionService {
           payment_method_id: paymentMethod.id,
         },
       });
+
+      const webhookPayload = {
+        plan: {
+          ...subscription.price.plan,
+          price: { ...subscription.price, plan: undefined },
+        },
+        subscription: {
+          ...updatedSubscription,
+        },
+      };
 
       const event = await tx.webhookEvent.create({
         data: {
@@ -185,7 +184,7 @@ export class SubscriptionService {
           },
         });
 
-        await tx.subscription.update({
+        const updatedSubscription = await tx.subscription.update({
           where: { id: subscription.id },
           data: {
             status: 'active',
@@ -201,8 +200,7 @@ export class SubscriptionService {
             price: { ...subscription.price, plan: undefined },
           },
           subscription: {
-            ...subscription,
-            price: undefined,
+            ...updatedSubscription,
           },
         };
 

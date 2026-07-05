@@ -51,6 +51,20 @@ export class RenewalsService {
       },
     });
 
+    if (subscription.cancel_at_period_end) {
+      this.logger.log(
+        `Subscription ${subscription.id} is flagged for cancellation at period end. Cancelling now.`,
+      );
+      await this.prisma.subscription.update({
+        where: { id: subscription.id },
+        data: {
+          status: 'canceled',
+          canceled_at: now,
+        },
+      });
+      return;
+    }
+
     const failedStatus = isTrial ? 'canceled' : 'past_due';
 
     if (!subscription.paymentMethod) {

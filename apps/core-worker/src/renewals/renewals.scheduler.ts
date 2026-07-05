@@ -18,9 +18,10 @@ export class RenewalsScheduler {
   async schedulerExpiredSubscriptionsRenewal() {
     const now = new Date();
 
-    const subscriptions = await this.prisma.subscription.findMany({
+    // 1. Sweep expired trials (status = trialing, trial_end <= now)
+    const trialingSubscriptions = await this.prisma.subscription.findMany({
       where: {
-        status: { in: ['active', 'trialing'] },
+        status: 'trialing',
         trial_end: {
           lte: now,
         },
@@ -31,19 +32,46 @@ export class RenewalsScheduler {
     });
 
     this.logger.log(
-      `Running schedule for expired trials. No of expired subscriptions to process: ${subscriptions.length}.`,
+      `Running schedule for expired trials. No of expired trials to process: ${trialingSubscriptions.length}.`,
     );
 
-    for (const subscription of subscriptions) {
-      this.queue.add(
-        subscription.status === 'trialing'
-          ? RenewalJobs.TRIAL
-          : RenewalJobs.RENEW,
+    for (const subscription of trialingSubscriptions) {
+      await this.queue.add(
+        RenewalJobs.TRIAL,
         {
           subscriptionId: subscription.id,
         },
         {
-          jobId: `renew:${subscription.id}:${subscription.trial_end?.getTime()}`,
+          jobId: `renew-trial:${subscription.id}:${subscription.trial_end?.getTime()}`,
+        },
+      );
+    }
+
+    // 2. Sweep expired active subscriptions (status = active, current_period_end <= now)
+    const activeSubscriptions = await this.prisma.subscription.findMany({
+      where: {
+        status: 'active',
+        current_period_end: {
+          lte: now,
+        },
+      },
+      orderBy: {
+        current_period_end: 'asc',
+      },
+    });
+
+    this.logger.log(
+      `Running schedule for expired active subscriptions. No to process: ${activeSubscriptions.length}.`,
+    );
+
+    for (const subscription of activeSubscriptions) {
+      await this.queue.add(
+        RenewalJobs.RENEW,
+        {
+          subscriptionId: subscription.id,
+        },
+        {
+          jobId: `renew-active:${subscription.id}:${subscription.current_period_end?.getTime()}`,
         },
       );
     }

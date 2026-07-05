@@ -3,8 +3,10 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { EnvironmentType, NombaService } from '@orbit/nomba';
 import { QueueNames, RenewalJobs } from '@queue/queue';
+import { WebhookDispatcher } from '@queue/queue/webhook.dispatcher';
 import { DateUtils } from 'apps/core-api/utils/date.util';
 import { Job, Queue } from 'bullmq';
+import { WebhookEventType } from '../webhook/webhook.type';
 
 interface TrialRenewalPayload {
   subscriptionId: string;
@@ -26,6 +28,7 @@ export class RenewalsService {
     private nomba: NombaService,
     @InjectQueue(QueueNames.RENEWALS)
     private queue: Queue,
+    private webhook: WebhookDispatcher,
   ) {}
 
   async processTrialSubscriptionRenewal(job: Job<TrialRenewalPayload>) {
@@ -55,13 +58,31 @@ export class RenewalsService {
       this.logger.log(
         `Subscription ${subscription.id} is flagged for cancellation at period end. Cancelling now.`,
       );
-      await this.prisma.subscription.update({
-        where: { id: subscription.id },
-        data: {
-          status: 'canceled',
-          canceled_at: now,
-        },
-      });
+
+      const payload = {
+        ...subscription,
+      };
+
+      const [_, event] = await this.prisma.$transaction([
+        this.prisma.subscription.update({
+          where: { id: subscription.id },
+          data: {
+            status: 'canceled',
+            canceled_at: now,
+          },
+        }),
+        this.prisma.webhookEvent.create({
+          data: {
+            environment: subscription.environment,
+            payload: payload,
+            type: WebhookEventType.SUBSCRIPTION_CANCELED,
+            status: 'pending',
+            project_id: subscription.project_id,
+          },
+        }),
+      ]);
+
+      await this.webhook.dispatch({ webhookEventId: event.id });
       return;
     }
 
@@ -204,14 +225,18 @@ export class RenewalsService {
   }
 
   async processChargeStatus(job: Job<ChargeVerificationData>) {
-    const { invoiceId } = job.data;
+    const { invoiceId, environment } = job.data;
     const now = new Date();
 
     const invoice = await this.prisma.invoice.findUniqueOrThrow({
       where: { id: invoiceId },
       include: {
         subscription: {
-          include: { price: true },
+          include: {
+            price: {
+              include: { plan: true },
+            },
+          },
         },
       },
     });
@@ -228,13 +253,13 @@ export class RenewalsService {
       const isTrialing = invoice.subscription.status === 'trialing';
       const failedStatus = isTrialing ? 'canceled' : 'past_due';
 
-      await this.prisma.$transaction(async (tx) => {
-        await tx.invoice.update({
+      const event = await this.prisma.$transaction(async (tx) => {
+        const updatedInvoice = await tx.invoice.update({
           where: { id: invoice.id },
           data: { status: 'failed' },
         });
 
-        await tx.subscription.update({
+        const updatedSubscription = await tx.subscription.update({
           where: { id: invoice.subscription_id },
           data: {
             status: failedStatus,
@@ -250,13 +275,34 @@ export class RenewalsService {
           },
         });
 
+        const payload = {
+          subscription: updatedSubscription,
+          invoice: updatedInvoice,
+          plan: { ...price.plan, price: { ...price, plan: undefined } },
+        };
+
+        const event = await tx.webhookEvent.create({
+          data: {
+            environment,
+            payload: payload,
+            type: isTrialing
+              ? WebhookEventType.SUBSCRIPTION_CANCELED
+              : WebhookEventType.SUBSCRIPTION_PAST_DUE,
+            project_id: invoice.project_id,
+          },
+        });
+
         if (isTrialing && invoice.subscription.payment_method_id) {
           await tx.paymentMethod.update({
             where: { id: invoice.subscription.payment_method_id },
             data: { is_default: false },
           });
         }
+
+        return event;
       });
+
+      await this.webhook.dispatch({ webhookEventId: event.id });
       return;
     }
 
@@ -267,8 +313,8 @@ export class RenewalsService {
       price.billing_interval_count,
     );
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.subscription.update({
+    const event = await this.prisma.$transaction(async (tx) => {
+      const subscription = await tx.subscription.update({
         where: { id: invoice.subscription_id },
         data: {
           status: 'active',
@@ -277,7 +323,7 @@ export class RenewalsService {
         },
       });
 
-      await tx.invoice.update({
+      const updatedInvoice = await tx.invoice.update({
         where: { id: invoice.id },
         data: {
           status: 'paid',
@@ -286,6 +332,29 @@ export class RenewalsService {
           period_end: period_end,
         },
       });
+
+      const payload = {
+        subscription: subscription,
+        plan: {
+          ...price.plan,
+          price: {
+            ...price,
+            plan: undefined,
+          },
+        },
+        invoice: updatedInvoice,
+      };
+
+      return await tx.webhookEvent.create({
+        data: {
+          environment,
+          payload: payload,
+          type: WebhookEventType.SUBSCRIPTION_ACTIVE,
+          project_id: invoice.project_id,
+        },
+      });
     });
+
+    await this.webhook.dispatch({ webhookEventId: event.id });
   }
 }

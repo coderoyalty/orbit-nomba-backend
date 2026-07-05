@@ -11,6 +11,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { RenewalsService } from './renewals/renewals.service';
 import { RenewalsProcessor } from './renewals/renewals.processor';
 import { RenewalsScheduler } from './renewals/renewals.scheduler';
+import { QueueModule } from '@queue/queue/queue.module';
 
 @Module({
   imports: [
@@ -37,11 +38,7 @@ import { RenewalsScheduler } from './renewals/renewals.scheduler';
       }),
       inject: [ConfigService],
     }),
-    BullModule.registerQueue(
-      ...(() => {
-        return Object.values(QueueNames).map((v) => ({ name: v }));
-      })(),
-    ),
+    QueueModule,
     DatabaseModule,
     NombaModule,
   ],

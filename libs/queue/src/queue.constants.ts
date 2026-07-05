@@ -2,6 +2,7 @@ export const QueueNames = {
   SUBSCRIPTIONS: 'subscriptions',
   VERIFY: 'verifications',
   RENEWALS: 'renewals',
+  WEBHOOK: 'outbound-webhook',
 } as const;
 
 export const SubscriptionJobs = {
@@ -18,3 +19,7 @@ export const RenewalJobs = {
 } as const;
 
 export type RenewalJobs = (typeof RenewalJobs)[keyof typeof RenewalJobs];
+
+export const WebhookJobs = {
+  DISPATCH: 'dispatch',
+};

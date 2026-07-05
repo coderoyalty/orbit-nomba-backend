@@ -48,6 +48,8 @@ model Project {
   paymentMethods PaymentMethod[]
 
   invoices Invoice[]
+
+  webhookEvents WebhookEvent[]
 }
 
 enum Environment {
@@ -81,6 +83,33 @@ model WebhookEndpoint {
   updatedAt DateTime @updatedAt
 
   @@unique([project_id, environment])
+}
+
+enum WebhookEventStatus {
+  pending
+  processing
+  delivered
+  failed
+}
+
+model WebhookEvent {
+  id String @id @default(cuid())
+
+  project_id String
+  project    Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+
+  environment Environment
+
+  type    String
+  payload Json
+
+  status   WebhookEventStatus @default(pending)
+  attempts Int                @default(0)
+
+  last_attempt_at DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Plan {

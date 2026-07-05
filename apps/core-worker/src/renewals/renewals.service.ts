@@ -229,18 +229,21 @@ export class RenewalsService {
     const { invoiceId, environment } = job.data;
     const now = new Date();
 
-    const invoice = await this.prisma.invoice.findUniqueOrThrow({
-      where: { id: invoiceId },
-      include: {
-        subscription: {
-          include: {
-            price: {
-              include: { plan: true },
+    const [invoice, attemptCount] = await this.prisma.$transaction([
+      this.prisma.invoice.findUniqueOrThrow({
+        where: { id: invoiceId },
+        include: {
+          subscription: {
+            include: {
+              price: {
+                include: { plan: true },
+              },
             },
           },
         },
-      },
-    });
+      }),
+      this.prisma.paymentAttempt.count({ where: { invoice_id: invoiceId } }),
+    ]);
 
     const res = await this.nomba.verifyTransaction<any>(
       { id: invoice.id, type: 'orderReference' },
@@ -252,7 +255,12 @@ export class RenewalsService {
 
     if (isPaymentFailed) {
       const isTrialing = invoice.subscription.status === 'trialing';
-      const failedStatus = isTrialing ? 'canceled' : 'past_due';
+
+      const MAX_RETRIES = 3;
+      const retriesExhausted = attemptCount >= MAX_RETRIES;
+
+      const failedStatus =
+        isTrialing || retriesExhausted ? 'canceled' : 'past_due';
 
       const event = await this.prisma.$transaction(async (tx) => {
         const updatedInvoice = await tx.invoice.update({
@@ -264,7 +272,7 @@ export class RenewalsService {
           where: { id: invoice.subscription_id },
           data: {
             status: failedStatus,
-            ...(isTrialing && { canceled_at: now }), // Removed canceled_at for past_due
+            ...((isTrialing || retriesExhausted) && { canceled_at: now }), // Removed canceled_at for past_due
           },
         });
 
@@ -286,14 +294,18 @@ export class RenewalsService {
           data: {
             environment,
             payload: payload,
-            type: isTrialing
-              ? WebhookEventType.SUBSCRIPTION_CANCELED
-              : WebhookEventType.SUBSCRIPTION_PAST_DUE,
+            type:
+              isTrialing || retriesExhausted
+                ? WebhookEventType.SUBSCRIPTION_CANCELED
+                : WebhookEventType.SUBSCRIPTION_PAST_DUE,
             project_id: invoice.project_id,
           },
         });
 
-        if (isTrialing && invoice.subscription.payment_method_id) {
+        if (
+          (isTrialing || retriesExhausted) &&
+          invoice.subscription.payment_method_id
+        ) {
           await tx.paymentMethod.update({
             where: { id: invoice.subscription.payment_method_id },
             data: { is_default: false },
@@ -304,6 +316,21 @@ export class RenewalsService {
       });
 
       await this.webhook.dispatch({ webhookEventId: event.id });
+
+      if (!isTrialing && !retriesExhausted) {
+        this.logger.log(
+          `Scheduling Dunning retry for invoice ${invoice.id}. Attempt ${attemptCount + 1} of ${MAX_RETRIES}`,
+        );
+
+        // Push the job back into the main RENEWALS queue with a 24-hour delay
+
+        await this.queue.add(
+          RenewalJobs.PROCESS_SUBSCRIPTION,
+          { subscriptionId: invoice.subscription_id },
+          { delay: 24 * 60 * 60 * 1000 }, // 24 hours
+        );
+      }
+
       return;
     }
 

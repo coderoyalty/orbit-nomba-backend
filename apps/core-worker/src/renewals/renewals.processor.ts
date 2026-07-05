@@ -15,10 +15,10 @@ export class RenewalsProcessor extends WorkerHost {
 
   async process(job: Job): Promise<void> {
     switch (job.name as RenewalJobs) {
-      case RenewalJobs.TRIAL:
+      case RenewalJobs.PROCESS_TRIAL:
         await this.service.processTrialSubscriptionRenewal(job);
         break;
-      case RenewalJobs.RENEW:
+      case RenewalJobs.PROCESS_SUBSCRIPTION:
         await this.service.processSubscriptionRenewal(job);
         break;
       case RenewalJobs.CHARGE_STATUS:

@@ -37,7 +37,7 @@ export class RenewalsScheduler {
 
     for (const subscription of trialingSubscriptions) {
       await this.queue.add(
-        RenewalJobs.TRIAL,
+        RenewalJobs.PROCESS_TRIAL,
         {
           subscriptionId: subscription.id,
         },
@@ -66,7 +66,7 @@ export class RenewalsScheduler {
 
     for (const subscription of activeSubscriptions) {
       await this.queue.add(
-        RenewalJobs.RENEW,
+        RenewalJobs.PROCESS_SUBSCRIPTION,
         {
           subscriptionId: subscription.id,
         },

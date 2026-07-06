@@ -2,6 +2,7 @@ import { Interval } from '@app/database';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -68,4 +69,15 @@ export class CreatePlanDto {
   @IsNumber()
   @Min(1)
   trial_days?: number;
+
+  @ApiProperty({
+    example: true,
+    description:
+      'Enable graceful payment retries period (Dunning) if a renewal charge fails.',
+    required: false,
+    default: true,
+  })
+  @IsBoolean()
+  @IsOptional()
+  dunning_enabled?: boolean;
 }

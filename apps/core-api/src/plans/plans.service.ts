@@ -20,6 +20,7 @@ export class PlansService {
         project: { connect: { id: project.id } },
         trial_days: dto.trial_days ?? 0,
         is_active: true,
+        dunning_enabled: dto.dunning_enabled,
         prices: {
           create: {
             billing_interval: dto.price.interval,
@@ -89,7 +90,12 @@ export class PlansService {
       where: {
         id: id,
       },
-      data: { name: dto.name, description: dto.description },
+      data: {
+        name: dto.name,
+        description: dto.description,
+        dunning_enabled: dto.dunning_enabled,
+        trial_days: dto.trial_days,
+      },
     });
 
     return updatedPlan;
@@ -144,7 +150,10 @@ export class PlansService {
   /**
    * Grandfathering for plans.
    *
-   * At an attempt to change the amount of a plan price, create a new plan price, and deactivate the previous one. Previous subscriptions will remain on the old plan price, new subscribers use the new plan price. If there's a need to use the new plan price for all subscribers, migrate the subscribers from the old price plan, to the new price plan.
+   * At an attempt to change the amount of a plan price, create a new plan price, and deactivate the previous one.
+   * Previous subscriptions will remain on the old plan price, new subscribers use the new plan price.
+   * If there's a need to use the new plan price for all subscribers, migrate the subscribers from the old price plan,
+   * to the new price plan.
    */
   async changePrice(
     params: { planId: string; priceId: string },
@@ -254,7 +263,7 @@ export class PlansService {
       const result = await tx.subscription.updateMany({
         where: {
           price_id: { in: priceIds },
-          status: 'active',
+          status: { in: ['active', 'trialing'] },
           cancel_at_period_end: false, // Only touch subscriptions not already cancelling
         },
         data: {

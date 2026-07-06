@@ -4,6 +4,8 @@ import { NombaService } from '@orbit/nomba';
 import { TrialSubscriptionJob } from '@queue/queue';
 import { DateUtils } from 'apps/core-api/utils/date.util';
 import { Job } from 'bullmq';
+import { WebhookEventType } from '../webhook/webhook.type';
+import { WebhookDispatcher } from '@queue/queue/webhook.dispatcher';
 
 @Injectable()
 export class SubscriptionService {
@@ -12,6 +14,7 @@ export class SubscriptionService {
   constructor(
     private prisma: PrismaService,
     private nomba: NombaService,
+    private webhook: WebhookDispatcher,
   ) {}
 
   async processTrial(job: Job<TrialSubscriptionJob>) {
@@ -33,7 +36,7 @@ export class SubscriptionService {
       `Processing trial subscription for ${payload.subscriptionId}`,
     );
 
-    await this.prisma.$transaction(async (tx) => {
+    const event = await this.prisma.$transaction(async (tx) => {
       const subscription = await tx.subscription.findUnique({
         where: { id: payload.subscriptionId },
         include: {
@@ -63,7 +66,7 @@ export class SubscriptionService {
         subscription,
       );
 
-      await tx.subscription.update({
+      const updatedSubscription = await tx.subscription.update({
         where: { id: subscription.id },
         data: {
           status: 'trialing',
@@ -72,7 +75,31 @@ export class SubscriptionService {
           payment_method_id: paymentMethod.id,
         },
       });
+
+      const webhookPayload = {
+        plan: {
+          ...subscription.price.plan,
+          price: { ...subscription.price, plan: undefined },
+        },
+        subscription: {
+          ...updatedSubscription,
+        },
+      };
+
+      const event = await tx.webhookEvent.create({
+        data: {
+          environment: subscription.environment,
+          payload: webhookPayload,
+          type: WebhookEventType.SUBSCRIPTION_CREATED,
+          project_id: subscription.project_id,
+          status: 'pending',
+        },
+      });
+
+      return event;
     });
+
+    await this.webhook.dispatch({ webhookEventId: event!.id });
 
     //TODO: delegate to refund job.
     await this.nomba.refundTransaction(
@@ -108,7 +135,7 @@ export class SubscriptionService {
     this.logger.log(`Processing first payment for ${payload.subscriptionId}`);
 
     try {
-      await this.prisma.$transaction(async (tx) => {
+      const event = await this.prisma.$transaction(async (tx) => {
         const subscription = await tx.subscription.findUnique({
           where: { id: payload.subscriptionId },
           include: {
@@ -157,7 +184,7 @@ export class SubscriptionService {
           },
         });
 
-        await tx.subscription.update({
+        const updatedSubscription = await tx.subscription.update({
           where: { id: subscription.id },
           data: {
             status: 'active',
@@ -166,7 +193,31 @@ export class SubscriptionService {
             payment_method_id: paymentMethod.id,
           },
         });
+
+        const webhookPayload = {
+          plan: {
+            ...subscription.price.plan,
+            price: { ...subscription.price, plan: undefined },
+          },
+          subscription: {
+            ...updatedSubscription,
+          },
+        };
+
+        const event = await tx.webhookEvent.create({
+          data: {
+            environment: subscription.environment,
+            payload: webhookPayload,
+            type: WebhookEventType.SUBSCRIPTION_CREATED,
+            project_id: subscription.project_id,
+            status: 'pending',
+          },
+        });
+
+        return event;
       });
+
+      await this.webhook.dispatch({ webhookEventId: event!.id });
 
       this.logger.log(
         `Subscription ${payload.subscriptionId} activated successfully.`,

@@ -1,13 +1,29 @@
-import { PrismaService, SubscriptionStatus } from '@app/database';
+import {
+  Customer,
+  Invoice,
+  Plan,
+  Price,
+  Prisma,
+  PrismaService,
+  Subscription,
+  SubscriptionStatus,
+} from '@app/database';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
-import { EnvironmentType, NombaService } from '@orbit/nomba';
+import { EnvironmentType, NombaResponse, NombaService } from '@orbit/nomba';
 import { QueueNames, RenewalJobs } from '@queue/queue';
+import { WebhookDispatcher } from '@queue/queue/webhook.dispatcher';
 import { DateUtils } from 'apps/core-api/utils/date.util';
 import { Job, Queue } from 'bullmq';
+import { WebhookEventType } from '../webhook/webhook.type';
 
 interface TrialRenewalPayload {
   subscriptionId: string;
+}
+
+interface DunningRetryPayload {
+  subscriptionId: string;
+  invoiceId: string;
 }
 
 interface ChargeVerificationData {
@@ -16,6 +32,19 @@ interface ChargeVerificationData {
   orderReference: string;
   environment: EnvironmentType;
 }
+
+interface RetryDecision {
+  attempts: number;
+  exhausted: boolean;
+  isTrial: boolean;
+}
+
+interface IChargeVerification<T = unknown> {
+  response: NombaResponse<T>;
+  failed: boolean;
+}
+
+const MAX_DUNNING_RETRIES = 3;
 
 @Injectable()
 export class RenewalsService {
@@ -26,24 +55,84 @@ export class RenewalsService {
     private nomba: NombaService,
     @InjectQueue(QueueNames.RENEWALS)
     private queue: Queue,
+    private webhook: WebhookDispatcher,
   ) {}
-
-  async processTrialSubscriptionRenewal(job: Job<TrialRenewalPayload>) {
-    await this.handleRenewal(job.data.subscriptionId, true);
-  }
-
   async processSubscriptionRenewal(job: Job<TrialRenewalPayload>) {
-    await this.handleRenewal(job.data.subscriptionId, false);
+    const subscription = await this.prepareRenewal(
+      job.data.subscriptionId,
+      false,
+    );
+
+    if (!subscription) return;
+
+    const invoice = await this.createInvoice(subscription);
+
+    await this.chargeInvoice(subscription, invoice, false);
+  }
+  async processTrialSubscriptionRenewal(job: Job<TrialRenewalPayload>) {
+    // prepare subscription.
+    const subscription = await this.prepareRenewal(
+      job.data.subscriptionId,
+      true,
+    );
+
+    if (!subscription) return;
+
+    const invoice = await this.createInvoice(subscription);
+
+    await this.chargeInvoice(subscription, invoice, true);
   }
 
-  /**
-   * Consolidated logic for both trial and standard renewals.
-   */
-  private async handleRenewal(subscriptionId: string, isTrial: boolean) {
-    const now = new Date();
+  async processDunningRetry(job: Job<DunningRetryPayload>) {
+    const subscription = await this.prepareRenewal(
+      job.data.subscriptionId,
+      false,
+    );
 
+    if (!subscription) return;
+
+    const invoice = await this.resetInvoiceForRetry(job.data.invoiceId);
+
+    await this.chargeInvoice(subscription, invoice, false);
+  }
+
+  async processChargeStatus(job: Job<ChargeVerificationData>) {
+    const invoice = await this.loadInvoiceForVerification(job.data.invoiceId);
+
+    const verification = await this.verifyCharge(
+      invoice,
+      job.data.orderReference,
+    );
+
+    if (verification.failed) {
+      await this.handleFailedVerification(invoice);
+      return;
+    }
+
+    await this.handleSuccessfulVerification(invoice, verification);
+  }
+
+  private async prepareRenewal(subscriptionId: string, isTrial: boolean) {
+    const subscription = await this.loadSubscription(subscriptionId);
+
+    if (await this.cancelIfPeriodEnded(subscription)) {
+      return null;
+    }
+
+    if (!(await this.ensurePaymentMethod(subscription, isTrial))) {
+      return null;
+    }
+
+    return subscription;
+  }
+  private async loadSubscription(subscriptionId: string) {
     const subscription = await this.prisma.subscription.findUniqueOrThrow({
-      where: { id: subscriptionId },
+      where: {
+        id: subscriptionId,
+        status: {
+          notIn: ['canceled'],
+        },
+      },
       include: {
         paymentMethod: { select: { provider_token: true } },
         price: true,
@@ -51,21 +140,56 @@ export class RenewalsService {
       },
     });
 
+    return subscription;
+  }
+  private async cancelIfPeriodEnded(subscription: Subscription) {
+    const now = new Date();
+
     if (subscription.cancel_at_period_end) {
       this.logger.log(
         `Subscription ${subscription.id} is flagged for cancellation at period end. Cancelling now.`,
       );
-      await this.prisma.subscription.update({
-        where: { id: subscription.id },
-        data: {
-          status: 'canceled',
-          canceled_at: now,
-        },
-      });
-      return;
+
+      const payload = {
+        ...subscription,
+        paymentMethod: undefined, // contains card token for recurring debit.
+      };
+
+      const [_, event] = await this.prisma.$transaction([
+        this.prisma.subscription.update({
+          where: { id: subscription.id },
+          data: {
+            status: 'canceled',
+            canceled_at: now,
+          },
+        }),
+
+        this.prisma.webhookEvent.create({
+          data: {
+            environment: subscription.environment,
+            payload: payload,
+            type: WebhookEventType.SUBSCRIPTION_CANCELED,
+            status: 'pending',
+            project_id: subscription.project_id,
+          },
+        }),
+      ]);
+
+      await this.webhook.dispatch({ webhookEventId: event.id });
+      return true;
     }
 
+    return false;
+  }
+  private async ensurePaymentMethod(
+    subscription: Subscription & {
+      price: Price;
+      paymentMethod: { provider_token: string } | null;
+    },
+    isTrial: boolean,
+  ) {
     const failedStatus = isTrial ? 'canceled' : 'past_due';
+    const now = new Date();
 
     if (!subscription.paymentMethod) {
       await this.prisma.$transaction(async (tx) => {
@@ -99,10 +223,27 @@ export class RenewalsService {
           },
         });
       });
-      return;
+      return false;
     }
 
-    const pendingInvoice = await this.prisma.invoice.create({
+    return true;
+  }
+
+  private async resetInvoiceForRetry(invoiceId: string) {
+    return this.prisma.invoice.update({
+      where: {
+        id: invoiceId,
+      },
+      data: {
+        status: 'pending',
+      },
+    });
+  }
+
+  private async createInvoice(subscription: Subscription & { price: Price }) {
+    const now = new Date();
+
+    const invoice = await this.prisma.invoice.create({
       data: {
         amount: subscription.price.unit_amount,
         environment: subscription.environment,
@@ -116,6 +257,22 @@ export class RenewalsService {
       },
     });
 
+    return invoice;
+  }
+
+  private async chargeInvoice(
+    subscription: Subscription & {
+      customer: Customer;
+      price: Price;
+      paymentMethod: {
+        provider_token: string;
+      } | null;
+    },
+    invoice: Invoice,
+    isTrial: boolean,
+  ) {
+    const failedStatus = isTrial ? 'canceled' : 'past_due';
+
     try {
       const res = await this.nomba.chargeCard<{
         status: boolean;
@@ -126,11 +283,11 @@ export class RenewalsService {
         {
           order: {
             customer_email: subscription.customer.email,
-            transaction_reference: pendingInvoice.id,
+            transaction_reference: invoice.id,
             redirect_url: '',
             amount: subscription.price.unit_amount / 100,
           },
-          token: subscription.paymentMethod.provider_token,
+          token: subscription.paymentMethod!.provider_token,
         },
         subscription.environment,
       );
@@ -138,7 +295,7 @@ export class RenewalsService {
       if (!res.status) {
         await this.handleFailedCharge(
           subscription.id,
-          pendingInvoice.id,
+          invoice.id,
           failedStatus,
           isTrial,
           res.description || 'Gateway rejected tokenized charge.',
@@ -149,7 +306,7 @@ export class RenewalsService {
       await this.queue.add(
         RenewalJobs.CHARGE_STATUS,
         {
-          invoiceId: pendingInvoice.id,
+          invoiceId: invoice.id,
           subscriptionId: subscription.id,
           orderReference: res.data.orderReference,
           environment: subscription.environment,
@@ -163,7 +320,7 @@ export class RenewalsService {
       );
 
       await this.prisma.invoice.update({
-        where: { id: pendingInvoice.id },
+        where: { id: invoice.id },
         data: { status: 'failed' },
       });
 
@@ -203,72 +360,168 @@ export class RenewalsService {
     });
   }
 
-  async processChargeStatus(job: Job<ChargeVerificationData>) {
-    const { invoiceId } = job.data;
-    const now = new Date();
-
-    const invoice = await this.prisma.invoice.findUniqueOrThrow({
+  private async loadInvoiceForVerification(invoiceId: string) {
+    return await this.prisma.invoice.findUniqueOrThrow({
       where: { id: invoiceId },
       include: {
         subscription: {
-          include: { price: true },
+          include: {
+            price: {
+              include: { plan: true },
+            },
+          },
         },
       },
     });
+  }
 
-    const res = await this.nomba.verifyTransaction<any>(
-      { id: invoice.id, type: 'orderReference' },
+  private async verifyCharge(invoice: Invoice, orderReference: string) {
+    const response = await this.nomba.verifyTransaction<any>(
+      { id: orderReference, type: 'orderReference' },
       invoice.environment,
     );
 
-    const isPaymentFailed =
-      !res.status || res.data?.status === 'PAYMENT_FAILED';
+    return {
+      response,
+      failed: !response.status || response.data?.status === 'PAYMENT_FAILED',
+    };
+  }
 
-    if (isPaymentFailed) {
-      const isTrialing = invoice.subscription.status === 'trialing';
-      const failedStatus = isTrialing ? 'canceled' : 'past_due';
+  private async calculateRetry(
+    invoice: Invoice & { subscription: Subscription },
+  ) {
+    const attempts = await this.prisma.paymentAttempt.count({
+      where: {
+        invoice_id: invoice.id,
+      },
+    });
 
-      await this.prisma.$transaction(async (tx) => {
-        await tx.invoice.update({
-          where: { id: invoice.id },
-          data: { status: 'failed' },
-        });
+    return {
+      attempts,
+      exhausted: attempts >= MAX_DUNNING_RETRIES,
+      isTrial: invoice.subscription.status === 'trialing',
+    };
+  }
 
-        await tx.subscription.update({
-          where: { id: invoice.subscription_id },
-          data: {
-            status: failedStatus,
-            ...(isTrialing && { canceled_at: now }), // Removed canceled_at for past_due
-          },
-        });
+  private async persistVerificationFailure(
+    invoice: Invoice,
 
-        await tx.paymentAttempt.create({
-          data: {
-            status: 'failed',
-            error_message: 'Could not process payment during verification.',
-            invoice_id: invoice.id,
-          },
-        });
+    retry: RetryDecision,
+  ) {
+    const now = new Date();
+    const failedStatus =
+      retry.isTrial || retry.exhausted ? 'canceled' : 'past_due';
 
-        if (isTrialing && invoice.subscription.payment_method_id) {
-          await tx.paymentMethod.update({
-            where: { id: invoice.subscription.payment_method_id },
-            data: { is_default: false },
-          });
-        }
+    const event = await this.prisma.$transaction(async (tx) => {
+      const updatedInvoice = await tx.invoice.update({
+        where: { id: invoice.id },
+        data: { status: 'failed' },
       });
+
+      const updatedSubscription = await tx.subscription.update({
+        where: { id: invoice.subscription_id },
+        data: {
+          status: failedStatus,
+          canceled_at: retry.isTrial || retry.exhausted ? now : undefined, // Removed canceled_at for past_due
+        },
+        include: { price: { include: { plan: true } } },
+      });
+
+      await tx.paymentAttempt.create({
+        data: {
+          status: 'failed',
+          error_message: 'Could not process payment during verification.',
+          invoice_id: invoice.id,
+        },
+      });
+
+      const price = updatedSubscription.price;
+
+      const payload = {
+        subscription: updatedSubscription,
+        invoice: updatedInvoice,
+        plan: { ...price.plan, price: { ...price, plan: undefined } },
+      };
+
+      const event = await tx.webhookEvent.create({
+        data: {
+          environment: updatedSubscription.environment,
+          payload: payload,
+          type:
+            retry.isTrial || retry.exhausted
+              ? WebhookEventType.SUBSCRIPTION_CANCELED
+              : WebhookEventType.SUBSCRIPTION_PAST_DUE,
+          project_id: invoice.project_id,
+        },
+      });
+
+      if (
+        (retry.isTrial || retry.exhausted) &&
+        updatedSubscription.payment_method_id
+      ) {
+        await tx.paymentMethod.update({
+          where: { id: updatedSubscription.payment_method_id },
+          data: { is_default: false },
+        });
+      }
+
+      return event;
+    });
+
+    return event;
+  }
+
+  private async scheduleDunningRetry(
+    invoice: Invoice & { subscription: Subscription },
+    retry: RetryDecision,
+  ) {
+    if (retry.isTrial || retry.exhausted) {
       return;
     }
 
-    const price = invoice.subscription.price;
+    await this.queue.add(
+      RenewalJobs.PROCESS_DUNNING,
+      {
+        subscriptionId: invoice.subscription.id,
+        invoiceId: invoice.id,
+      },
+      {
+        delay: 24 * 60 * 60 * 1000,
+        jobId: `dunning:${invoice.id}:${retry.attempts + 1}`,
+      },
+    );
+  }
+
+  private async handleFailedVerification(
+    invoice: Invoice & { subscription: Subscription },
+  ) {
+    const retry = await this.calculateRetry(invoice);
+
+    const event = await this.persistVerificationFailure(invoice, retry);
+
+    // dispatch event
+
+    await this.webhook.dispatch({ webhookEventId: event.id });
+
+    await this.scheduleDunningRetry(invoice, retry);
+  }
+
+  private async handleSuccessfulVerification(
+    invoice: Invoice & {
+      subscription: Subscription & { price: Price & { plan: Plan } };
+    },
+    verification: IChargeVerification,
+  ) {
+    const now = new Date();
+    const price: Price & { plan: Plan } = invoice.subscription.price;
     const period_end = DateUtils.calculatePeriodEnd(
       now,
       price.billing_interval,
       price.billing_interval_count,
     );
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.subscription.update({
+    const event = await this.prisma.$transaction(async (tx) => {
+      const subscription = await tx.subscription.update({
         where: { id: invoice.subscription_id },
         data: {
           status: 'active',
@@ -277,7 +530,7 @@ export class RenewalsService {
         },
       });
 
-      await tx.invoice.update({
+      const updatedInvoice = await tx.invoice.update({
         where: { id: invoice.id },
         data: {
           status: 'paid',
@@ -286,6 +539,29 @@ export class RenewalsService {
           period_end: period_end,
         },
       });
+
+      const payload = {
+        subscription: subscription,
+        plan: {
+          ...price.plan,
+          price: {
+            ...price,
+            plan: undefined,
+          },
+        },
+        invoice: updatedInvoice,
+      };
+
+      return await tx.webhookEvent.create({
+        data: {
+          environment: subscription.environment,
+          payload: payload,
+          type: WebhookEventType.SUBSCRIPTION_ACTIVE,
+          project_id: invoice.project_id,
+        },
+      });
     });
+
+    await this.webhook.dispatch({ webhookEventId: event.id });
   }
 }

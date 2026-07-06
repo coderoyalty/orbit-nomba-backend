@@ -22,7 +22,7 @@ export class AuthService {
   async create(dto: CreateAccountDto) {
     const existing = await this.prisma.account.findFirst({
       where: {
-        email: dto.email,
+        email: dto.email.toLowerCase(),
       },
     });
 
@@ -46,7 +46,7 @@ export class AuthService {
 
   async validateAccount(dto: LoginAccountDto) {
     const account = await this.prisma.account.findUnique({
-      where: { email: dto.email },
+      where: { email: dto.email.toLowerCase() },
     });
 
     if (!account) {

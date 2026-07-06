@@ -45,7 +45,7 @@ export class SubScriptionService {
       where: {
         project_id: project.id,
         customer: {
-          email: dto.customer.email,
+          email: dto.customer.email.toLowerCase(),
         },
         OR: [
           // They already have a successfully running subscription
@@ -78,12 +78,12 @@ export class SubScriptionService {
           where: {
             project_id_email_environment: {
               project_id: project.id,
-              email: dto.customer.email,
+              email: dto.customer.email.toLowerCase(),
               environment,
             },
           },
           create: {
-            email: dto.customer.email,
+            email: dto.customer.email.toLowerCase(),
             name: dto.customer.name,
             project_id: project.id,
             ...(dto.customer.meta && {

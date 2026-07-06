@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   postgres:
     image: postgres:16.1-alpine
@@ -20,6 +18,7 @@ services:
       retries: 3
     networks:
       - engine_network
+
   redis:
     image: redis:7-alpine
     container_name: orbit_cache
@@ -34,6 +33,49 @@ services:
       interval: 5s
       timeout: 3s
       retries: 3
+    networks:
+      - engine_network
+
+  core-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: orbit_api
+    restart: unless-stopped
+    command: node dist/apps/core-api/main.js
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgres://postgres:orbit_pswd@postgres:5432/orbit_engine?schema=public
+      - REDIS_HOST=redis
+      - PORT=5000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - engine_network
+
+  core-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: orbit_worker
+    restart: unless-stopped
+    command: node dist/apps/core-worker/main.js
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgres://postgres:orbit_pswd@postgres:5432/orbit_engine?schema=public
+      - REDIS_HOST=redis
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - engine_network
 

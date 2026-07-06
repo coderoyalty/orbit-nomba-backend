@@ -21,6 +21,10 @@ export class WebhookProcessor extends WorkerHost {
 
   async process(job: Job<DispatchWebhookPayload>): Promise<void> {
     const data = job.data;
+    this.logger.log(
+      `Processing Webhook Job: Event ID=${data.webhookEventId}, Attempt=${job.attemptsMade + 1}`,
+    );
+
     const event = await this.prisma.webhookEvent.findUniqueOrThrow({
       where: { id: data.webhookEventId },
       include: {
@@ -35,6 +39,9 @@ export class WebhookProcessor extends WorkerHost {
     );
 
     if (!endpoint) {
+      this.logger.warn(
+        `No webhook endpoint configured for event ID=${event.id}, environment=${event.environment}, project ID=${event.project_id}`,
+      );
       await this.prisma.webhookEvent.update({
         where: {
           id: event.id,
@@ -43,7 +50,7 @@ export class WebhookProcessor extends WorkerHost {
           status: 'failed',
         },
       });
-      return; // or throw error?
+      return;
     }
 
     await this.prisma.webhookEvent.update({
@@ -64,10 +71,10 @@ export class WebhookProcessor extends WorkerHost {
 
     const timestamp = event.createdAt.toString();
 
-    const stringifiedBody = `${timestamp}:${webhookBody}`;
+    const stringifiedBody = `${timestamp}:${JSON.stringify(webhookBody)}`;
 
     const signature = crypto
-      .createHmac('', endpoint.signing_secret)
+      .createHmac('sha256', endpoint.signing_secret)
       .update(stringifiedBody)
       .digest('hex');
 
@@ -78,32 +85,43 @@ export class WebhookProcessor extends WorkerHost {
       'x-orbit-event-type': event.type,
     };
 
-    const response = await firstValueFrom(
-      this.httpService.post(
-        endpoint.url,
-        { ...webhookBody },
-
-        {
-          timeout: 20_000,
-          headers: {
-            'Content-Type': 'application/json',
-            ...headers,
-          },
-        },
-      ),
+    this.logger.log(
+      `Dispatching webhook event=${event.type} to url=${endpoint.url}`,
     );
 
-    await this.prisma.webhookEvent.update({
-      where: { id: event.id },
-      data: {
-        status: 'delivered',
-        attempts: job.attemptsMade + 1,
-      },
-    });
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(
+          endpoint.url,
+          { ...webhookBody },
+          {
+            timeout: 20_000,
+            headers: {
+              'Content-Type': 'application/json',
+              ...headers,
+            },
+          },
+        ),
+      );
 
-    // sign payload
-    // call webhook endpoint.
-    // depending on the feedback, retry or update the event.
+      this.logger.log(
+        `Webhook event=${event.id} successfully delivered. Status=${response.status}`,
+      );
+
+      await this.prisma.webhookEvent.update({
+        where: { id: event.id },
+        data: {
+          status: 'delivered',
+          attempts: job.attemptsMade + 1,
+        },
+      });
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Failed to deliver webhook event=${event.id} to url=${endpoint.url}. Error=${errMsg}`,
+      );
+      throw error;
+    }
   }
 
   @OnWorkerEvent('failed')

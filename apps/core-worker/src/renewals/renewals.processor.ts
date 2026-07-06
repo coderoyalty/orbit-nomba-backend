@@ -21,6 +21,9 @@ export class RenewalsProcessor extends WorkerHost {
       case RenewalJobs.PROCESS_SUBSCRIPTION:
         await this.service.processSubscriptionRenewal(job);
         break;
+      case RenewalJobs.PROCESS_DUNNING:
+        await this.service.processDunningRetry(job);
+        break;
       case RenewalJobs.CHARGE_STATUS:
         await this.service.processChargeStatus(job);
         break;

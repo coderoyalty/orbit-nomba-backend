@@ -14,7 +14,8 @@ export type SubscriptionJobs =
 
 export const RenewalJobs = {
   PROCESS_TRIAL: 'renewal-trial',
-  PROCESS_SUBSCRIPTION: 'renew-subscription',
+  PROCESS_SUBSCRIPTION: 'renewal-subscription',
+  PROCESS_DUNNING: 'renewal-dunning',
   CHARGE_STATUS: 'verify-charge-status',
 } as const;
 

@@ -10,7 +10,7 @@ FROM base AS dependencies
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json nest-cli.json ./
 COPY prisma ./prisma/
-
+COPY . .
 RUN pnpm install --frozen-lockfile
 
 # --- Stage 2: Builder ---

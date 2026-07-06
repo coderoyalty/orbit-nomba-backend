@@ -119,6 +119,8 @@ model Plan {
 
   is_active Boolean @default(true)
 
+  dunning_enabled Boolean @default(true)
+
   trial_days Int @default(0)
 
   project_id String

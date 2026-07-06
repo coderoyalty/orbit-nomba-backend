@@ -42,7 +42,7 @@ services:
       dockerfile: Dockerfile
     container_name: orbit_api
     restart: unless-stopped
-    command: node dist/apps/core-api/main.js
+    command: sh -c "pnpm prisma migrate deploy && node dist/apps/core-api/main.js"
     ports:
       - "5000:5000"
     env_file:

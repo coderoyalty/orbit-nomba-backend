@@ -9,14 +9,19 @@ import { ClientApiModule } from './api/client-api.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.enableCors({
-    origin: (origin: any, callback: any) => {
-      // Dynamically reflect back the incoming origin to guarantee CORS handshakes succeed with credentials
-      callback(null, true);
-    },
-    credentials: true,
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    allowedHeaders: 'Content-Type,Accept,Authorization,X-Orbit-Env,x-orbit-env',
+  app.use((req: any, res: any, next: any) => {
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Accept,Authorization,X-Orbit-Env,x-orbit-env');
+    
+    if (req.method === 'OPTIONS') {
+      return res.status(204).end();
+    }
+    next();
   });
   app.useGlobalPipes(
     new ValidationPipe({

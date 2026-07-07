@@ -22,6 +22,11 @@ export class DashboardAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthRequest>();
+
+    if (request.method === 'OPTIONS') {
+      return true;
+    }
+
     const token = request.cookies?.[SESSION_NAME];
 
     if (!token) {

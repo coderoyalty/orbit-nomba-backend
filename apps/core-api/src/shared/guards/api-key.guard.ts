@@ -20,6 +20,10 @@ export class ApiKeyGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<ApiKeyRequest>();
 
+    if (request.method === 'OPTIONS') {
+      return true;
+    }
+
     const authorization = request.headers.authorization;
 
     const [scheme, secretKey] = authorization?.split(' ') ?? [];

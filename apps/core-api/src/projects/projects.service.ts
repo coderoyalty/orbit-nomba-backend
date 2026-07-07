@@ -79,6 +79,11 @@ export class ProjectsService {
             plan: true,
           },
         },
+        invoices: {
+          include: {
+            paymentAttempts: true,
+          },
+        },
       },
     });
 

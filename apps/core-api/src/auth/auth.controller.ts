@@ -40,10 +40,11 @@ export class AuthController {
       account.email,
     );
 
+    const isProd = process.env.NODE_ENV === 'production';
     res.cookie(SESSION_NAME, token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production', //// HTTPS in production
-      sameSite: 'lax',
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
       maxAge: 1000 * 60 * 60 * 24, // 24hrs.
     });
 
@@ -54,7 +55,11 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   async logout(@Res({ passthrough: true }) res: express.Response) {
-    res.clearCookie('orbit_session');
+    const isProd = process.env.NODE_ENV === 'production';
+    res.clearCookie('orbit_session', {
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
+    });
   }
 
   @UseGuards(DashboardAuthGuard)

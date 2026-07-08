@@ -16,6 +16,7 @@ const WebhookEventType = {
   SUBSCRIPTION_CANCELED: 'subscription.canceled',
 } as const;
 import { ConfigService } from '@nestjs/config';
+import { NombaService } from '@orbit/nomba';
 
 @Injectable()
 export class PortalService {
@@ -24,6 +25,7 @@ export class PortalService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly webhookDispatcher: WebhookDispatcher,
+    private readonly nombaService: NombaService,
   ) {}
 
   async createSession(projectCtx: ProjectContext, dto: CreatePortalSessionDto) {
@@ -181,6 +183,33 @@ export class PortalService {
       },
     });
     return sub;
+  }
+
+  async setupPaymentMethod(
+    payload: any,
+    dto: { redirectUrl: string },
+  ) {
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { id: payload.subscriptionId },
+      include: { customer: true },
+    });
+    if (!subscription) {
+      throw new NotFoundException('Subscription not found.');
+    }
+
+    const orderReference = `card_update:${subscription.id}:${Date.now()}`;
+
+    const checkoutLink = await this.nombaService.generateCheckoutLink(
+      {
+        amount: 100, // ₦100 validation fee
+        transaction_reference: orderReference,
+        customer_email: subscription.customer.email,
+        redirect_url: dto.redirectUrl,
+      },
+      payload.environment,
+    );
+
+    return checkoutLink;
   }
 
   async changePlan(payload: any, dto: { planId: string }) {

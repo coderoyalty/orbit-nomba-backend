@@ -16,6 +16,7 @@ import { WebhookDispatcher } from '@queue/queue/webhook.dispatcher';
 import { DateUtils } from 'apps/core-api/utils/date.util';
 import { Job, Queue } from 'bullmq';
 import { WebhookEventType } from '../webhook/webhook.type';
+import { ConfigService } from '@nestjs/config';
 
 interface TrialRenewalPayload {
   subscriptionId: string;
@@ -57,6 +58,7 @@ export class RenewalsService {
     @InjectQueue(QueueNames.RENEWALS)
     private queue: Queue,
     private webhook: WebhookDispatcher,
+    private configService: ConfigService,
   ) {}
   async processSubscriptionRenewal(job: Job<TrialRenewalPayload>) {
     const subscription = await this.prepareRenewal(
@@ -301,7 +303,8 @@ export class RenewalsService {
           order: {
             customer_email: subscription.customer.email,
             transaction_reference: invoice.id,
-            redirect_url: '',
+            redirect_url:
+              this.configService.getOrThrow<string>('DASHBOARD_URL'),
             amount: subscription.price.unit_amount / 100,
           },
           token: subscription.paymentMethod!.provider_token,

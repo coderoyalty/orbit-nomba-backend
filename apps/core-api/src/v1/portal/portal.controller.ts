@@ -66,6 +66,16 @@ export class PortalController {
     return this.portalService.updatePaymentMethod(payload, dto);
   }
 
+  @Post('subscription/payment-method/setup')
+  async setupPaymentMethod(
+    @Body() dto: { redirectUrl: string },
+    @Headers('authorization') authHeader?: string,
+  ) {
+    const token = this.extractToken(authHeader);
+    const payload = await this.portalService.validateToken(token);
+    return this.portalService.setupPaymentMethod(payload, dto);
+  }
+
   @Post('subscription/change-plan')
   async changePlan(
     @Body() dto: { planId: string },
